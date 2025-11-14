@@ -147,6 +147,12 @@ public static class MediaFormats
         "pdf"
     };
 
+    public static IReadOnlyCollection<string> ImageExtensionNames => ImageExtensions;
+
+    public static IReadOnlyCollection<string> VideoExtensionNames => VideoExtensions;
+
+    public static IReadOnlyCollection<string> PdfExtensionNames => PdfExtensions;
+
     public static IReadOnlySet<string> ImageVideoFormats { get; } = ImageExtensions.Union(VideoExtensions, StringComparer.OrdinalIgnoreCase).ToHashSet();
 
     public static bool IsImage(FilePath path) => IsImage(path.Extension);

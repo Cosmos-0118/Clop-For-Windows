@@ -76,7 +76,10 @@ Clop-Windows/
   - Introduced `PdfOptimiserOptions` for configuring Ghostscript paths, font search directories, and size/metadata policies, with sane defaults sourced from `%LOCALAPPDATA%` + bundled binaries.
   - Created `Core.Tests/PdfOptimiserTests.cs` using a fake toolchain to cover success paths, metadata overrides, and invalid PDF handling without requiring the real binary.
   - Expanded `docs/windows-deps.md` with explicit Ghostscript licensing guidance (AGPL vs commercial Artifex license) so release engineering can choose a compliant distribution path.
-- [ ] **P2.5 – CLI parity**: Build `CliBridge` commands analogous to macOS CLI (optimize clipboard, files, directories, automation hooks). Ensure command names/flags match for portability.
+- [x] **P2.5 – CLI parity**: Build `CliBridge` commands analogous to macOS CLI (optimize clipboard, files, directories, automation hooks). Ensure command names/flags match for portability.
+  - Implemented a System.CommandLine-driven `clop optimise` entry point that mirrors macOS flags (types/include/exclude, recursive, aggressive, playback-speed, JSON, progress, clipboard/UI toggles) and streams work through the existing optimisation coordinator.
+  - Added guard rails & warnings for mac-only flags (GUI, clipboard copy, adaptive optimisation) so scripts can pass the same arguments without breaking.
+  - Introduced a dedicated `CliBridge.Tests` project with unit coverage for `TypeFilter` and `TargetResolver`, ensuring include/exclude tokens and recursion behave exactly like the Swift CLI.
 
 ### Phase 3 – Background Agents & Automation
 
