@@ -83,15 +83,18 @@ Clop-Windows/
 
 ### Phase 3 – Background Agents & Automation
 
-- [ ] **P3.1 – Clipboard watcher**: Implement a background agent (Worker Service with tray hook or packaged desktop task) that watches clipboard changes, honours pause states, and invokes the pipeline, mirroring `ClopApp.swift` clipboard logic.
-- [ ] **P3.2 – File/directory watchers**: Port `Uploads.swift` + `Automation.swift` semantics (directory allow-lists, size caps, concurrency limits). Use `FileSystemWatcher` with debounce logic equivalent to `EonilFSEvents`.
-- [ ] **P3.3 – Automation hooks**: Provide App Service endpoints / named pipes for Windows Shortcuts, Power Automate, and Explorer context menu triggers, matching macOS Shortcut identifiers.
-- [ ] **P3.4 – Finder-equivalent integration**: Create Explorer context menu or Share contract extension mirroring `FinderOptimiser`. Ensure drag/drop promises behave like macOS NSFilePromiseReceiver flows.
+- [x] **P3.1 – Clipboard watcher**: Implement a background agent (Worker Service with tray hook or packaged desktop task) that watches clipboard changes, honours pause states, and invokes the pipeline, mirroring `ClopApp.swift` clipboard logic.
+- [x] **P3.2 – File/directory watchers**: Port `Uploads.swift` + `Automation.swift` semantics (directory allow-lists, size caps, concurrency limits). Use `FileSystemWatcher` with debounce logic equivalent to `EonilFSEvents`.
+- [x] **P3.3 – Automation hooks**: Provide App Service endpoints / named pipes for Windows Shortcuts, Power Automate, and Explorer context menu triggers, matching macOS Shortcut identifiers.
+- [x] **P3.4 – Finder-equivalent integration**: Create Explorer context menu or Share contract extension mirroring `FinderOptimiser`. Ensure drag/drop promises behave like macOS NSFilePromiseReceiver flows.
 
 ### Phase 4 – WPF Experience
 
-- [ ] **P4.1 – Floating HUD**: Recreate the SwiftUI floating results (`FloatingResult.swift`, `CompactResult.swift`) as WPF windows with acrylic/compact styling (Win32 composition brushes or WinAppSDK interop where useful). Include progress bars, preview thumbnails, and quick actions.
-- [ ] **P4.2 – Main shell**: Implement Settings, Onboarding, and Compare views (feature toggles, aggressive optimisation switches, preset editors) in WPF MVVM, mirroring `SettingsView.swift`, `CompareView.swift`, `Onboarding.swift`.
+- [x] **P4.1 – Floating HUD**: Recreate the SwiftUI floating results (`FloatingResult.swift`, `CompactResult.swift`) as WPF windows with acrylic/compact styling (Win32 composition brushes or WinAppSDK interop where useful). Include progress bars, preview thumbnails, and quick actions.
+- [x] **P4.2 – Main shell**: Implement Settings, Onboarding, and Compare views (feature toggles, aggressive optimisation switches, preset editors) in WPF MVVM, mirroring `SettingsView.swift`, `CompareView.swift`, `Onboarding.swift`.
+  - Implemented navigation rail, onboarding tour, compare intake, and settings panels bound to `SettingsHost` with DI wiring.
+- [ ] **P4.3 – Keyboard + gesture support**: Map hotkeys (`SauceKey` equivalents) to Windows accelerator keys and global shortcuts, keeping defaults in sync. Document interplay with Windows input APIs.
+  - In progress: wiring window accelerators and global modifier shortcuts that toggle clipboard watchers and floating HUD visibility.
 - [ ] **P4.3 – Keyboard + gesture support**: Map hotkeys (`SauceKey` equivalents) to Windows accelerator keys and global shortcuts, keeping defaults in sync. Document interplay with Windows input APIs.
 - [ ] **P4.4 – Localization & accessibility**: Ensure UI texts reuse the macOS strings and pass Windows accessibility checks (High Contrast, screen readers).
 

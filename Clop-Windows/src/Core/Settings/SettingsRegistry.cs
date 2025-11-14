@@ -15,6 +15,8 @@ public static class SettingsRegistry
     public static readonly SettingKey<bool> EnableFloatingResults = Bool("enableFloatingResults", true);
     public static readonly SettingKey<bool> OptimiseTiff = Bool("optimiseTIFF", true);
     public static readonly SettingKey<bool> EnableClipboardOptimiser = Bool("enableClipboardOptimiser", true);
+    public static readonly SettingKey<bool> OptimiseVideoClipboard = Bool("optimiseVideoClipboard", false);
+    public static readonly SettingKey<bool> OptimiseImagePathClipboard = Bool("optimiseImagePathClipboard", false);
     public static readonly SettingKey<bool> StripMetadata = Bool("stripMetadata", true);
     public static readonly SettingKey<bool> PreserveDates = Bool("preserveDates", true);
     public static readonly SettingKey<bool> PreserveColorMetadata = Bool("preserveColorMetadata", true);
@@ -100,6 +102,8 @@ public static class SettingsRegistry
         EnableFloatingResults,
         OptimiseTiff,
         EnableClipboardOptimiser,
+        OptimiseVideoClipboard,
+        OptimiseImagePathClipboard,
         StripMetadata,
         PreserveDates,
         PreserveColorMetadata,
