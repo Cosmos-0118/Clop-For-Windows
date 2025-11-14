@@ -5,6 +5,9 @@ using ClopWindows.App.Infrastructure;
 using ClopWindows.App.Services;
 using ClopWindows.App.ViewModels;
 using ClopWindows.App.Views.FloatingHud;
+using ClopWindows.BackgroundService;
+using ClopWindows.BackgroundService.Automation;
+using ClopWindows.BackgroundService.Clipboard;
 using ClopWindows.Core.Optimizers;
 using ClopWindows.Core.Settings;
 using ClopWindows.Core.Shared;
@@ -14,10 +17,11 @@ using Microsoft.Extensions.Logging;
 
 namespace ClopWindows.App;
 
-public partial class App : Application
+public partial class App : System.Windows.Application
 {
     private IHost? _host;
     private SimpleFileLoggerProvider? _fileLoggerProvider;
+    private TrayIconService? _trayIconService;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -66,6 +70,12 @@ public partial class App : Application
                     return new OptimisationCoordinator(optimisers, Math.Max(Environment.ProcessorCount / 2, 2));
                 });
 
+                services.AddSingleton<ClipboardMonitor>();
+                services.AddSingleton<ClipboardOptimisationService>();
+                services.AddSingleton<DirectoryOptimisationService>();
+                services.AddSingleton<ShortcutsBridge>();
+                services.AddHostedService<Worker>();
+
                 services.AddSingleton<FloatingHudViewModel>();
                 services.AddSingleton<FloatingHudWindow>();
                 services.AddSingleton<FloatingHudController>();
@@ -75,6 +85,7 @@ public partial class App : Application
                 services.AddSingleton<SettingsViewModel>();
                 services.AddSingleton<MainWindowViewModel>();
                 services.AddSingleton<MainWindow>();
+                services.AddSingleton<TrayIconService>();
             })
             .Build();
 
@@ -88,6 +99,8 @@ public partial class App : Application
         hudController.Show();
 
         var mainWindow = _host.Services.GetRequiredService<MainWindow>();
+        _trayIconService = _host.Services.GetRequiredService<TrayIconService>();
+        _trayIconService.Initialize(mainWindow);
         mainWindow.Show();
     }
 
@@ -108,6 +121,9 @@ public partial class App : Application
                 _host.Dispose();
             }
         }
+
+        _trayIconService?.Dispose();
+        _trayIconService = null;
 
         _fileLoggerProvider?.Dispose();
         _fileLoggerProvider = null;

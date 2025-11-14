@@ -26,7 +26,7 @@ public sealed class FloatingResultViewModel : ObservableObject
     private bool _isSuccess;
     private bool _isFailure;
     private TimeSpan? _duration;
-    private Brush _statusBrush;
+    private System.Windows.Media.Brush _statusBrush;
 
     private long? _originalBytes;
     private FilePath? _outputPath;
@@ -103,7 +103,7 @@ public sealed class FloatingResultViewModel : ObservableObject
         private set => SetProperty(ref _duration, value);
     }
 
-    public Brush StatusBrush
+    public System.Windows.Media.Brush StatusBrush
     {
         get => _statusBrush;
         private set => SetProperty(ref _statusBrush, value);
@@ -243,7 +243,7 @@ public sealed class FloatingResultViewModel : ObservableObject
 
     private static SolidColorBrush CreateBrush(byte r, byte g, byte b)
     {
-        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
+        var brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(r, g, b));
         brush.Freeze();
         return brush;
     }

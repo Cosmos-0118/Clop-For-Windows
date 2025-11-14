@@ -119,13 +119,13 @@ public sealed class KeyboardShortcutService : IDisposable
         switch (action)
         {
             case GlobalShortcutAction.ShowMainWindow:
-                Application.Current?.Dispatcher.BeginInvoke(new Action(BringMainWindowToFront));
+                System.Windows.Application.Current?.Dispatcher.BeginInvoke(new Action(BringMainWindowToFront));
                 break;
             case GlobalShortcutAction.ToggleFloatingResults:
-                Application.Current?.Dispatcher.BeginInvoke(new Action(ToggleFloatingResults));
+                System.Windows.Application.Current?.Dispatcher.BeginInvoke(new Action(ToggleFloatingResults));
                 break;
             case GlobalShortcutAction.ToggleClipboardWatcher:
-                Application.Current?.Dispatcher.BeginInvoke(new Action(ToggleClipboardWatcher));
+                System.Windows.Application.Current?.Dispatcher.BeginInvoke(new Action(ToggleClipboardWatcher));
                 break;
         }
     }
@@ -239,21 +239,21 @@ public sealed class KeyboardShortcutService : IDisposable
             return;
         }
 
-        Application.Current?.Dispatcher.BeginInvoke(new Action(() =>
-        {
-            if (_window is null)
+        System.Windows.Application.Current?.Dispatcher.BeginInvoke(new Action(() =>
             {
-                return;
-            }
+                if (_window is null)
+                {
+                    return;
+                }
 
-            var handle = new WindowInteropHelper(_window).Handle;
-            if (handle == IntPtr.Zero)
-            {
-                return;
-            }
+                var handle = new WindowInteropHelper(_window).Handle;
+                if (handle == IntPtr.Zero)
+                {
+                    return;
+                }
 
-            RebuildHotkeys(handle);
-        }));
+                RebuildHotkeys(handle);
+            }));
     }
 
     public void Dispose()

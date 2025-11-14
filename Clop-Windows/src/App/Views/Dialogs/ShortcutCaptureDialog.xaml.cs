@@ -47,7 +47,7 @@ public partial class ShortcutCaptureDialog : Window
         DialogResult = false;
     }
 
-    private void OnPreviewKeyDown(object sender, KeyEventArgs e)
+    private void OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key == Key.Escape)
         {

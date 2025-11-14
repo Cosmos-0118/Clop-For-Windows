@@ -9,7 +9,6 @@ using ClopWindows.App.Services;
 using ClopWindows.Core.Optimizers;
 using ClopWindows.Core.Shared;
 using Microsoft.Extensions.Logging;
-using Microsoft.Win32;
 
 namespace ClopWindows.App.ViewModels;
 
@@ -54,7 +53,7 @@ public sealed class CompareViewModel : ObservableObject, IDisposable
     {
         try
         {
-            var dialog = new OpenFileDialog
+            var dialog = new Microsoft.Win32.OpenFileDialog
             {
                 Title = "Select files to optimise",
                 Multiselect = true,

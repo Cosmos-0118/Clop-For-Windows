@@ -51,7 +51,7 @@ public sealed class ShortcutPreferenceViewModel : ObservableObject
     {
         var dialog = new ShortcutCaptureDialog
         {
-            Owner = Application.Current?.MainWindow,
+            Owner = System.Windows.Application.Current?.MainWindow,
             ScopeLabel = ScopeLabel,
             CurrentBinding = CurrentBinding,
             DefaultBinding = DefaultBinding
@@ -80,12 +80,12 @@ public sealed class ShortcutPreferenceViewModel : ObservableObject
         var conflict = ShortcutCatalog.FindConflict(_id, modifiers, key);
         if (conflict is not null)
         {
-            MessageBox.Show(
-                Application.Current?.MainWindow,
-                $"That shortcut is already used by '{conflict.Description}'. Pick a different combination.",
-                "Shortcut conflict",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+            System.Windows.MessageBox.Show(
+                System.Windows.Application.Current?.MainWindow,
+        $"That shortcut is already used by '{conflict.Description}'. Pick a different combination.",
+        "Shortcut conflict",
+        MessageBoxButton.OK,
+        MessageBoxImage.Warning);
             return;
         }
 
@@ -97,19 +97,19 @@ public sealed class ShortcutPreferenceViewModel : ObservableObject
     {
         if (key == Key.None)
         {
-            MessageBox.Show(
-                Application.Current?.MainWindow,
-                "Press a non-modifier key to create a shortcut.",
-                "Invalid shortcut",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+            System.Windows.MessageBox.Show(
+                System.Windows.Application.Current?.MainWindow,
+        "Press a non-modifier key to create a shortcut.",
+        "Invalid shortcut",
+        MessageBoxButton.OK,
+        MessageBoxImage.Warning);
             return false;
         }
 
         if (_scope == ShortcutScope.Global && modifiers == ModifierKeys.None)
         {
-            MessageBox.Show(
-                Application.Current?.MainWindow,
+            System.Windows.MessageBox.Show(
+                System.Windows.Application.Current?.MainWindow,
                 "Global shortcuts must include at least one modifier key (Ctrl, Shift, Alt, or Win).",
                 "Invalid shortcut",
                 MessageBoxButton.OK,
@@ -119,12 +119,12 @@ public sealed class ShortcutPreferenceViewModel : ObservableObject
 
         if (modifiers == ModifierKeys.None && !AllowsModifierlessKey(key))
         {
-            MessageBox.Show(
-                Application.Current?.MainWindow,
-                "Add a modifier (Ctrl, Shift, Alt, or Win) for that key combination.",
-                "Invalid shortcut",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+            System.Windows.MessageBox.Show(
+                System.Windows.Application.Current?.MainWindow,
+            "Add a modifier (Ctrl, Shift, Alt, or Win) for that key combination.",
+            "Invalid shortcut",
+            MessageBoxButton.OK,
+            MessageBoxImage.Warning);
             return false;
         }
 
