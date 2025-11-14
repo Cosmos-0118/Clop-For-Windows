@@ -36,6 +36,7 @@ public sealed class ClipboardOptimisationService : IAsyncDisposable
     private volatile bool _copyImageFilePath;
     private volatile bool _useCustomTemplate;
     private volatile bool _optimiseVideoClipboard;
+    private volatile bool _optimisePdfClipboard;
     private volatile bool _optimiseImagePathClipboard;
     private string _customTemplate = string.Empty;
     private int _suppressNextNotification;
@@ -208,9 +209,16 @@ public sealed class ClipboardOptimisationService : IAsyncDisposable
                     finalPath = RenameOptimisedClipboardImage(output);
                 }
 
-                if (context.Item.IsImage && context.Item.ShouldCopyToClipboard && _autoCopy)
+                if (_autoCopy)
                 {
-                    await CopyImageToClipboardAsync(finalPath).ConfigureAwait(false);
+                    if (context.Item.IsImage)
+                    {
+                        await CopyImageToClipboardAsync(finalPath).ConfigureAwait(false);
+                    }
+                    else if (context.Item.IsVideo || context.Item.IsPdf)
+                    {
+                        await CopyFileToClipboardAsync(finalPath).ConfigureAwait(false);
+                    }
                 }
             }
             else
@@ -309,6 +317,13 @@ public sealed class ClipboardOptimisationService : IAsyncDisposable
                     results.Add(new ClipboardItem(filePath, ItemType.Video, ClipboardOrigin.FileDrop, false, false));
                 }
             }
+            else if (MediaFormats.IsPdf(filePath))
+            {
+                if (_optimisePdfClipboard)
+                {
+                    results.Add(new ClipboardItem(filePath, ItemType.Pdf, ClipboardOrigin.FileDrop, false, false));
+                }
+            }
         }
 
         if (snapshot.ImageBytes is { Length: > 0 } bytes)
@@ -335,12 +350,22 @@ public sealed class ClipboardOptimisationService : IAsyncDisposable
                 }
 
                 var filePath = FilePath.From(candidate);
-                if (!MediaFormats.IsImage(filePath))
+                if (MediaFormats.IsImage(filePath))
                 {
+                    results.Add(new ClipboardItem(filePath, ItemType.Image, ClipboardOrigin.TextPath, false, true));
                     continue;
                 }
 
-                results.Add(new ClipboardItem(filePath, ItemType.Image, ClipboardOrigin.TextPath, false, true));
+                if (_optimisePdfClipboard && MediaFormats.IsPdf(filePath))
+                {
+                    results.Add(new ClipboardItem(filePath, ItemType.Pdf, ClipboardOrigin.TextPath, false, false));
+                    continue;
+                }
+
+                if (_optimiseVideoClipboard && MediaFormats.IsVideo(filePath))
+                {
+                    results.Add(new ClipboardItem(filePath, ItemType.Video, ClipboardOrigin.TextPath, false, false));
+                }
             }
         }
 
@@ -488,6 +513,42 @@ public sealed class ClipboardOptimisationService : IAsyncDisposable
         }
     }
 
+    private async Task CopyFileToClipboardAsync(FilePath path)
+    {
+        Interlocked.Exchange(ref _suppressNextNotification, 1);
+
+        try
+        {
+            var populated = new StringCollection { path.Value };
+
+            await _monitor.RunOnStaAsync(async () =>
+            {
+                const int maxAttempts = 3;
+                for (var attempt = 1; attempt <= maxAttempts; attempt++)
+                {
+                    try
+                    {
+                        var data = new System.Windows.Forms.DataObject();
+                        data.SetFileDropList(populated);
+                        data.SetData(DataFormats.Text, path.Value);
+                        data.SetData(ClipboardFormats.OptimisationStatus, "true");
+
+                        WinFormsClipboard.SetDataObject(data, true);
+                        return;
+                    }
+                    catch (System.Runtime.InteropServices.ExternalException) when (attempt < maxAttempts)
+                    {
+                        await Task.Delay(50).ConfigureAwait(true);
+                    }
+                }
+            }).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to copy optimised clipboard file {Path} to clipboard", path.Value);
+        }
+    }
+
     private static FilePath EnsureUniquePath(FilePath desired)
     {
         if (!File.Exists(desired.Value))
@@ -548,6 +609,7 @@ public sealed class ClipboardOptimisationService : IAsyncDisposable
                string.Equals(name, SettingsRegistry.UseCustomNameTemplateForClipboardImages.Name, StringComparison.Ordinal) ||
                string.Equals(name, SettingsRegistry.CustomNameTemplateForClipboardImages.Name, StringComparison.Ordinal) ||
                string.Equals(name, SettingsRegistry.OptimiseVideoClipboard.Name, StringComparison.Ordinal) ||
+             string.Equals(name, SettingsRegistry.OptimisePdfClipboard.Name, StringComparison.Ordinal) ||
                string.Equals(name, SettingsRegistry.OptimiseImagePathClipboard.Name, StringComparison.Ordinal);
     }
 
@@ -562,6 +624,7 @@ public sealed class ClipboardOptimisationService : IAsyncDisposable
             _useCustomTemplate = SettingsHost.Get(SettingsRegistry.UseCustomNameTemplateForClipboardImages);
             _customTemplate = SettingsHost.Get(SettingsRegistry.CustomNameTemplateForClipboardImages) ?? string.Empty;
             _optimiseVideoClipboard = SettingsHost.Get(SettingsRegistry.OptimiseVideoClipboard);
+            _optimisePdfClipboard = SettingsHost.Get(SettingsRegistry.OptimisePdfClipboard);
             _optimiseImagePathClipboard = SettingsHost.Get(SettingsRegistry.OptimiseImagePathClipboard);
         }
 

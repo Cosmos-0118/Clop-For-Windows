@@ -20,6 +20,7 @@ public sealed class FloatingHudController : IDisposable
     private readonly ILogger<FloatingHudController> _logger;
     private readonly Dictionary<string, FloatingResultViewModel> _results = new(StringComparer.Ordinal);
     private readonly Dictionary<string, OptimisationRequest> _requests = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DispatcherTimer> _dismissTimers = new(StringComparer.Ordinal);
 
     private bool _isInitialized;
     private bool _isDisposed;
@@ -57,6 +58,8 @@ public sealed class FloatingHudController : IDisposable
         {
             RegisterRequest(request);
         }
+
+        ApplyAutoHideSettings();
     }
 
     public void Show()
@@ -100,6 +103,7 @@ public sealed class FloatingHudController : IDisposable
 
             if (_results.TryGetValue(e.Progress.RequestId, out var viewModel))
             {
+                CancelDismissTimer(viewModel.RequestId);
                 viewModel.UpdateProgress(e.Progress);
             }
 
@@ -121,6 +125,7 @@ public sealed class FloatingHudController : IDisposable
             {
                 _requests.TryGetValue(e.Result.RequestId, out var request);
                 viewModel.ApplyResult(e.Result, request);
+                ScheduleAutoDismiss(viewModel);
             }
 
             EnsureVisible();
@@ -146,6 +151,8 @@ public sealed class FloatingHudController : IDisposable
 
     private void RegisterRequest(OptimisationRequest request)
     {
+        CancelDismissTimer(request.RequestId);
+
         if (_results.TryGetValue(request.RequestId, out var existing))
         {
             _requests[request.RequestId] = request;
@@ -188,6 +195,8 @@ public sealed class FloatingHudController : IDisposable
 
     private void RemoveResult(FloatingResultViewModel viewModel)
     {
+        CancelDismissTimer(viewModel.RequestId);
+
         if (!_results.Remove(viewModel.RequestId))
         {
             return;
@@ -226,6 +235,7 @@ public sealed class FloatingHudController : IDisposable
             }
             return;
         }
+
         if (!_viewModel.HasResults)
         {
             return;
@@ -272,26 +282,105 @@ public sealed class FloatingHudController : IDisposable
         _coordinator.RequestCompleted -= OnRequestCompleted;
         _coordinator.RequestFailed -= OnRequestCompleted;
         SettingsHost.SettingChanged -= OnSettingChanged;
+
+        foreach (var timer in _dismissTimers.Values)
+        {
+            timer.Stop();
+        }
+
+        _dismissTimers.Clear();
     }
 
     private void OnSettingChanged(object? sender, SettingChangedEventArgs e)
     {
-        if (!string.Equals(e.Name, SettingsRegistry.EnableFloatingResults.Name, StringComparison.Ordinal))
+        if (string.Equals(e.Name, SettingsRegistry.EnableFloatingResults.Name, StringComparison.Ordinal))
+        {
+            var enabled = e.Value is bool flag && flag;
+            Dispatch(() =>
+            {
+                if (!enabled)
+                {
+                    _window.Hide();
+                }
+                else if (_viewModel.HasResults)
+                {
+                    EnsureVisible();
+                }
+            });
+
+            return;
+        }
+
+        if (string.Equals(e.Name, SettingsRegistry.AutoHideFloatingResults.Name, StringComparison.Ordinal) ||
+            string.Equals(e.Name, SettingsRegistry.AutoHideFloatingResultsAfter.Name, StringComparison.Ordinal))
+        {
+            Dispatch(ApplyAutoHideSettings);
+        }
+    }
+
+    private void ApplyAutoHideSettings()
+    {
+        if (!SettingsHost.Get(SettingsRegistry.AutoHideFloatingResults))
+        {
+            foreach (var timer in _dismissTimers.Values)
+            {
+                timer.Stop();
+            }
+
+            _dismissTimers.Clear();
+            return;
+        }
+
+        foreach (var result in _viewModel.Results)
+        {
+            if (!result.IsRunning)
+            {
+                ScheduleAutoDismiss(result);
+            }
+        }
+    }
+
+    // Automatically hide finished results once the configured timeout elapses.
+    private void ScheduleAutoDismiss(FloatingResultViewModel viewModel)
+    {
+        CancelDismissTimer(viewModel.RequestId);
+
+        if (!SettingsHost.Get(SettingsRegistry.AutoHideFloatingResults))
         {
             return;
         }
 
-        var enabled = e.Value is bool flag && flag;
-        Dispatch(() =>
+        if (viewModel.IsRunning)
         {
-            if (!enabled)
-            {
-                _window.Hide();
-            }
-            else if (_viewModel.HasResults)
-            {
-                EnsureVisible();
-            }
-        });
+            return;
+        }
+
+        var seconds = SettingsHost.Get(SettingsRegistry.AutoHideFloatingResultsAfter);
+        if (seconds <= 0)
+        {
+            seconds = SettingsRegistry.AutoHideFloatingResultsAfter.DefaultValue;
+        }
+
+        var clampedSeconds = Math.Clamp(seconds, 1, 600);
+        var timer = new DispatcherTimer(TimeSpan.FromSeconds(clampedSeconds), DispatcherPriority.Background, null, _window.Dispatcher);
+        EventHandler? handler = null;
+        handler = (_, _) =>
+        {
+            timer.Tick -= handler;
+            timer.Stop();
+            _dismissTimers.Remove(viewModel.RequestId);
+            RemoveResult(viewModel);
+        };
+        timer.Tick += handler;
+        _dismissTimers[viewModel.RequestId] = timer;
+        timer.Start();
+    }
+
+    private void CancelDismissTimer(string requestId)
+    {
+        if (_dismissTimers.Remove(requestId, out var timer))
+        {
+            timer.Stop();
+        }
     }
 }

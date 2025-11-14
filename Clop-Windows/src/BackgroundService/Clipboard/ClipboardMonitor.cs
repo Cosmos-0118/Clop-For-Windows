@@ -168,12 +168,14 @@ public sealed class ClipboardMonitor : IDisposable
                 continue;
             }
 
-            lastSequence = current;
-            var snapshot = CaptureSnapshotSafe();
+            var snapshot = CaptureSnapshotWithRetries();
             if (snapshot is null)
             {
+                lastSequence = current;
                 continue;
             }
+
+            lastSequence = current;
 
             try
             {
@@ -199,66 +201,102 @@ public sealed class ClipboardMonitor : IDisposable
         }
     }
 
-    private ClipboardSnapshot? CaptureSnapshotSafe()
+    private ClipboardSnapshot? CaptureSnapshotWithRetries()
+    {
+        const int maxAttempts = 6;
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            var success = TryCaptureSnapshot(out var snapshot, out var retryable);
+            if (success)
+            {
+                return snapshot;
+            }
+
+            if (!retryable)
+            {
+                return null;
+            }
+
+            var backoff = Math.Min(100, 20 * attempt);
+            Thread.Sleep(backoff);
+        }
+
+        _logger.LogDebug("Clipboard snapshot capture failed after {Attempts} attempts.", maxAttempts);
+        return null;
+    }
+
+    private bool TryCaptureSnapshot(out ClipboardSnapshot snapshot, out bool retryable)
     {
         try
         {
-            var dataObject = WinFormsClipboard.GetDataObject();
-            if (dataObject is null)
-            {
-                return ClipboardSnapshot.Empty;
-            }
-
-            var hasMarker = dataObject.GetDataPresent(ClipboardFormats.OptimisationStatus, false);
-
-            var filePaths = Array.Empty<string>();
-            if (dataObject.GetDataPresent(System.Windows.Forms.DataFormats.FileDrop, true))
-            {
-                var data = dataObject.GetData(System.Windows.Forms.DataFormats.FileDrop, true);
-                if (data is string[] dropList && dropList.Length > 0)
-                {
-                    filePaths = dropList.Where(path => !string.IsNullOrWhiteSpace(path)).ToArray();
-                }
-            }
-
-            byte[]? imageBytes = null;
-            try
-            {
-                if (WinFormsClipboard.ContainsImage())
-                {
-                    using var image = WinFormsClipboard.GetImage();
-                    if (image is not null)
-                    {
-                        using var clone = new Bitmap(image);
-                        using var ms = new MemoryStream();
-                        clone.Save(ms, ImageFormat.Png);
-                        imageBytes = ms.ToArray();
-                    }
-                }
-            }
-            catch (ExternalException ex)
-            {
-                _logger.LogDebug(ex, "Clipboard image unavailable during capture.");
-            }
-
-            string? text = null;
-            if (dataObject.GetDataPresent(System.Windows.Forms.DataFormats.Text, true))
-            {
-                text = dataObject.GetData(System.Windows.Forms.DataFormats.Text, true) as string;
-            }
-
-            return new ClipboardSnapshot(filePaths, imageBytes, text, hasMarker);
+            snapshot = CaptureSnapshotCore();
+            retryable = false;
+            return true;
         }
         catch (ExternalException ex)
         {
-            _logger.LogDebug(ex, "Clipboard unavailable for snapshot.");
-            return null;
+            _logger.LogDebug(ex, "Clipboard unavailable for snapshot (transient).");
+            snapshot = ClipboardSnapshot.Empty;
+            retryable = true;
+            return false;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to capture clipboard snapshot.");
-            return null;
+            snapshot = ClipboardSnapshot.Empty;
+            retryable = false;
+            return false;
         }
+    }
+
+    private ClipboardSnapshot CaptureSnapshotCore()
+    {
+        var dataObject = WinFormsClipboard.GetDataObject();
+        if (dataObject is null)
+        {
+            return ClipboardSnapshot.Empty;
+        }
+
+        var hasMarker = dataObject.GetDataPresent(ClipboardFormats.OptimisationStatus, false);
+
+        var filePaths = Array.Empty<string>();
+        if (dataObject.GetDataPresent(System.Windows.Forms.DataFormats.FileDrop, true))
+        {
+            var data = dataObject.GetData(System.Windows.Forms.DataFormats.FileDrop, true);
+            if (data is string[] dropList && dropList.Length > 0)
+            {
+                filePaths = dropList.Where(path => !string.IsNullOrWhiteSpace(path)).ToArray();
+            }
+        }
+
+        byte[]? imageBytes = null;
+        try
+        {
+            if (WinFormsClipboard.ContainsImage())
+            {
+                using var image = WinFormsClipboard.GetImage();
+                if (image is not null)
+                {
+                    using var clone = new Bitmap(image);
+                    using var ms = new MemoryStream();
+                    clone.Save(ms, ImageFormat.Png);
+                    imageBytes = ms.ToArray();
+                }
+            }
+        }
+        catch (ExternalException ex)
+        {
+            _logger.LogDebug(ex, "Clipboard image unavailable during capture.");
+        }
+
+        string? text = null;
+        if (dataObject.GetDataPresent(System.Windows.Forms.DataFormats.Text, true))
+        {
+            text = dataObject.GetData(System.Windows.Forms.DataFormats.Text, true) as string;
+        }
+
+        return new ClipboardSnapshot(filePaths, imageBytes, text, hasMarker);
     }
 
     [DllImport("user32.dll", SetLastError = false)]

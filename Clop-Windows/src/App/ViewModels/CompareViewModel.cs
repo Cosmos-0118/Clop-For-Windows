@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Windows.Threading;
+using ClopWindows.App.Localization;
 using ClopWindows.App.Infrastructure;
 using ClopWindows.App.Services;
 using ClopWindows.Core.Optimizers;
@@ -53,11 +54,15 @@ public sealed class CompareViewModel : ObservableObject, IDisposable
     {
         try
         {
+            var supportedLabel = ClopStringCatalog.Get("compare.dialog.filterSupported");
+            var allFilesLabel = ClopStringCatalog.Get("compare.dialog.filterAll");
+            var filter = string.Format(CultureInfo.InvariantCulture, "{0}|*.png;*.jpg;*.jpeg;*.webp;*.avif;*.heic;*.bmp;*.gif;*.tiff;*.tif;*.mov;*.mp4;*.mkv;*.webm;*.pdf|{1}|*.*", supportedLabel, allFilesLabel);
+
             var dialog = new Microsoft.Win32.OpenFileDialog
             {
-                Title = "Select files to optimise",
+                Title = ClopStringCatalog.Get("compare.dialog.title"),
                 Multiselect = true,
-                Filter = "Supported media|*.png;*.jpg;*.jpeg;*.webp;*.avif;*.heic;*.bmp;*.gif;*.tiff;*.tif;*.mov;*.mp4;*.mkv;*.webm;*.pdf|All files|*.*"
+                Filter = filter
             };
 
             var result = dialog.ShowDialog();

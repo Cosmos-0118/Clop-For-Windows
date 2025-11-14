@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using System.Drawing;
 using System.Windows;
+using ClopWindows.App.Localization;
 using Microsoft.Extensions.Logging;
 
 namespace ClopWindows.App.Services;
@@ -23,14 +24,14 @@ public sealed class TrayIconService : IDisposable
         _contextMenu = new System.Windows.Forms.ContextMenuStrip();
         _notifyIcon = new System.Windows.Forms.NotifyIcon
         {
-            Text = "Clop",
+            Text = ClopStringCatalog.Get("tray.tooltip"),
             Icon = SystemIcons.Application,
             Visible = false,
             ContextMenuStrip = _contextMenu
         };
 
-        var openItem = new System.Windows.Forms.ToolStripMenuItem("Open Clop", null, (_, _) => ShowMainWindow());
-        var exitItem = new System.Windows.Forms.ToolStripMenuItem("Exit", null, (_, _) => ExitApplication());
+        var openItem = new System.Windows.Forms.ToolStripMenuItem(ClopStringCatalog.Get("tray.open"), null, (_, _) => ShowMainWindow());
+        var exitItem = new System.Windows.Forms.ToolStripMenuItem(ClopStringCatalog.Get("tray.exit"), null, (_, _) => ExitApplication());
 
         _contextMenu.Items.Add(openItem);
         _contextMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
@@ -103,8 +104,8 @@ public sealed class TrayIconService : IDisposable
 
                 if (!_balloonShown)
                 {
-                    _notifyIcon.BalloonTipTitle = "Clop";
-                    _notifyIcon.BalloonTipText = "Clop is still running here.";
+                    _notifyIcon.BalloonTipTitle = ClopStringCatalog.Get("tray.balloon.title");
+                    _notifyIcon.BalloonTipText = ClopStringCatalog.Get("tray.balloon.message");
                     _notifyIcon.ShowBalloonTip(2000);
                     _balloonShown = true;
                 }

@@ -358,39 +358,52 @@ public sealed class DirectoryOptimisationService : IAsyncDisposable
 
     private async Task<FileInfo?> WaitForFileReadyAsync(FilePath path, CancellationToken token)
     {
-        const int maxAttempts = 6;
+        const int maxAttempts = 60;
+        long? previousLength = null;
+
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
             token.ThrowIfCancellationRequested();
+
+            FileInfo info;
             try
             {
-                var info = new FileInfo(path.Value);
+                info = new FileInfo(path.Value);
                 if (!info.Exists)
                 {
                     return null;
                 }
 
                 using var stream = new FileStream(path.Value, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-                if (info.Length == 0 && attempt < maxAttempts)
-                {
-                    await Task.Delay(FileReadyRetryDelay, token).ConfigureAwait(false);
-                    continue;
-                }
-
-                return info;
             }
             catch (IOException) when (attempt < maxAttempts)
             {
                 await Task.Delay(FileReadyRetryDelay, token).ConfigureAwait(false);
+                continue;
             }
             catch (UnauthorizedAccessException) when (attempt < maxAttempts)
             {
                 await Task.Delay(FileReadyRetryDelay, token).ConfigureAwait(false);
+                continue;
             }
             catch (FileNotFoundException)
             {
                 return null;
             }
+
+            if (info.Length <= 0)
+            {
+                await Task.Delay(FileReadyRetryDelay, token).ConfigureAwait(false);
+                continue;
+            }
+
+            if (previousLength.HasValue && info.Length == previousLength.Value)
+            {
+                return info;
+            }
+
+            previousLength = info.Length;
+            await Task.Delay(FileReadyRetryDelay, token).ConfigureAwait(false);
         }
 
         return null;

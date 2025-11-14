@@ -20,4 +20,6 @@ internal sealed record ClipboardItem(
     public bool IsImage => ItemType == ItemType.Image;
 
     public bool IsVideo => ItemType == ItemType.Video;
+
+    public bool IsPdf => ItemType == ItemType.Pdf;
 }

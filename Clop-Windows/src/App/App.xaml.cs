@@ -86,10 +86,13 @@ public partial class App : System.Windows.Application
                 services.AddSingleton<MainWindowViewModel>();
                 services.AddSingleton<MainWindow>();
                 services.AddSingleton<TrayIconService>();
+                services.AddSingleton<ThemeManager>();
             })
             .Build();
 
         _host.Start();
+
+        _ = _host.Services.GetRequiredService<ThemeManager>();
 
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;

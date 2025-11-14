@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows.Input;
 using ClopWindows.App.Infrastructure;
+using ClopWindows.App.Localization;
 using ClopWindows.Core.Settings;
 
 namespace ClopWindows.App.ViewModels;
@@ -29,9 +30,18 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
         NavigationItems = new ObservableCollection<NavigationItemViewModel>
         {
-            new NavigationItemViewModel(MainSection.Onboarding, "Get Started", "Set up Clop for Windows"),
-            new NavigationItemViewModel(MainSection.Compare, "Compare", "Drop files or review recent optimisations"),
-            new NavigationItemViewModel(MainSection.Settings, "Settings", "Adjust optimisation defaults")
+            new NavigationItemViewModel(
+                MainSection.Onboarding,
+                ClopStringCatalog.Get("navigation.onboarding.title"),
+                ClopStringCatalog.Get("navigation.onboarding.subtitle")),
+            new NavigationItemViewModel(
+                MainSection.Compare,
+                ClopStringCatalog.Get("navigation.compare.title"),
+                ClopStringCatalog.Get("navigation.compare.subtitle")),
+            new NavigationItemViewModel(
+                MainSection.Settings,
+                ClopStringCatalog.Get("navigation.settings.title"),
+                ClopStringCatalog.Get("navigation.settings.subtitle"))
         };
 
         _onboardingItem = NavigationItems.First(item => item.Section == MainSection.Onboarding);

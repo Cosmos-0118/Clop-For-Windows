@@ -7,14 +7,20 @@
              xmlns:compare="clr-namespace:ClopWindows.App.Views.Compare"
              xmlns:settings="clr-namespace:ClopWindows.App.Views.Settings">
     <Application.Resources>
-        <DataTemplate DataType="{x:Type vm:OnboardingViewModel}">
-            <onboarding:OnboardingView />
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:CompareViewModel}">
-            <compare:CompareView />
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
-            <settings:SettingsView />
-        </DataTemplate>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Resources/Theme.Default.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <DataTemplate DataType="{x:Type vm:OnboardingViewModel}">
+                <onboarding:OnboardingView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:CompareViewModel}">
+                <compare:CompareView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
+                <settings:SettingsView />
+            </DataTemplate>
+        </ResourceDictionary>
     </Application.Resources>
 </Application>

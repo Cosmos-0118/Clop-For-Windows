@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using ClopWindows.App.Infrastructure;
+using ClopWindows.App.Localization;
 using ClopWindows.Core.Settings;
 
 namespace ClopWindows.App.ViewModels;
@@ -15,10 +16,18 @@ public sealed class OnboardingViewModel : ObservableObject
     {
         _steps = new ObservableCollection<OnboardingStepViewModel>
         {
-            new("Drop files", "Drag photos, PDFs, or videos right into the window."),
-            new("Review savings", "Clop shows how much space you reclaimed for every item."),
-            new("Share instantly", "Copy optimised results or open their folder with a click."),
-            new("Automate", "Enable clipboard and watched folders to optimise without lifting a finger.")
+            new(
+                ClopStringCatalog.Get("onboarding.step.1.title"),
+                ClopStringCatalog.Get("onboarding.step.1.description")),
+            new(
+                ClopStringCatalog.Get("onboarding.step.2.title"),
+                ClopStringCatalog.Get("onboarding.step.2.description")),
+            new(
+                ClopStringCatalog.Get("onboarding.step.3.title"),
+                ClopStringCatalog.Get("onboarding.step.3.description")),
+            new(
+                ClopStringCatalog.Get("onboarding.step.4.title"),
+                ClopStringCatalog.Get("onboarding.step.4.description"))
         };
 
         _readonlySteps = new ReadOnlyObservableCollection<OnboardingStepViewModel>(_steps);
@@ -29,9 +38,9 @@ public sealed class OnboardingViewModel : ObservableObject
 
     public event EventHandler? OnboardingCompleted;
 
-    public string Title => "Welcome to Clop";
+    public string Title => ClopStringCatalog.Get("onboarding.title");
 
-    public string Subtitle => "Optimise images, videos, and PDFs with macOS feature parity.";
+    public string Subtitle => ClopStringCatalog.Get("onboarding.subtitle");
 
     public ReadOnlyObservableCollection<OnboardingStepViewModel> Steps => _readonlySteps;
 

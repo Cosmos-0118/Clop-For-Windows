@@ -14,6 +14,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     private int _autoHideFloatingResultsAfter;
     private bool _enableClipboardOptimiser;
     private bool _autoCopyToClipboard;
+    private bool _optimiseVideoClipboard;
+    private bool _optimisePdfClipboard;
     private bool _preserveDates;
     private bool _stripMetadata;
     private bool _enableAutomaticImageOptimisations;
@@ -115,6 +117,30 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         }
     }
 
+    public bool OptimiseVideoClipboard
+    {
+        get => _optimiseVideoClipboard;
+        set
+        {
+            if (SetProperty(ref _optimiseVideoClipboard, value) && !_suppressStoreUpdates)
+            {
+                SettingsHost.Set(SettingsRegistry.OptimiseVideoClipboard, value);
+            }
+        }
+    }
+
+    public bool OptimisePdfClipboard
+    {
+        get => _optimisePdfClipboard;
+        set
+        {
+            if (SetProperty(ref _optimisePdfClipboard, value) && !_suppressStoreUpdates)
+            {
+                SettingsHost.Set(SettingsRegistry.OptimisePdfClipboard, value);
+            }
+        }
+    }
+
     public bool PreserveDates
     {
         get => _preserveDates;
@@ -184,6 +210,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         AutoHideFloatingResultsAfter = SettingsHost.Get(SettingsRegistry.AutoHideFloatingResultsAfter);
         EnableClipboardOptimiser = SettingsHost.Get(SettingsRegistry.EnableClipboardOptimiser);
         AutoCopyToClipboard = SettingsHost.Get(SettingsRegistry.AutoCopyToClipboard);
+        OptimiseVideoClipboard = SettingsHost.Get(SettingsRegistry.OptimiseVideoClipboard);
+        OptimisePdfClipboard = SettingsHost.Get(SettingsRegistry.OptimisePdfClipboard);
         PreserveDates = SettingsHost.Get(SettingsRegistry.PreserveDates);
         StripMetadata = SettingsHost.Get(SettingsRegistry.StripMetadata);
         EnableAutomaticImageOptimisations = SettingsHost.Get(SettingsRegistry.EnableAutomaticImageOptimisations);
@@ -212,6 +240,12 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
                 break;
             case var name when name == SettingsRegistry.AutoCopyToClipboard.Name:
                 AutoCopyToClipboard = SettingsHost.Get(SettingsRegistry.AutoCopyToClipboard);
+                break;
+            case var name when name == SettingsRegistry.OptimiseVideoClipboard.Name:
+                OptimiseVideoClipboard = SettingsHost.Get(SettingsRegistry.OptimiseVideoClipboard);
+                break;
+            case var name when name == SettingsRegistry.OptimisePdfClipboard.Name:
+                OptimisePdfClipboard = SettingsHost.Get(SettingsRegistry.OptimisePdfClipboard);
                 break;
             case var name when name == SettingsRegistry.PreserveDates.Name:
                 PreserveDates = SettingsHost.Get(SettingsRegistry.PreserveDates);

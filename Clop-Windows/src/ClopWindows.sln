@@ -15,6 +15,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ClopWindows.App", "App\Clop
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Core.Tests", "..\tests\Core.Tests\Core.Tests.csproj", "{C3C09D7D-75B4-4F46-8F78-5CD87F799B08}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "App.Tests", "..\tests\App.Tests\ClopWindows.App.Tests.csproj", "{A0E79D7A-5DCC-4D0E-90D1-998D42C4A5E2}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -45,6 +47,10 @@ Global
 		{C3C09D7D-75B4-4F46-8F78-5CD87F799B08}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C3C09D7D-75B4-4F46-8F78-5CD87F799B08}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C3C09D7D-75B4-4F46-8F78-5CD87F799B08}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A0E79D7A-5DCC-4D0E-90D1-998D42C4A5E2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A0E79D7A-5DCC-4D0E-90D1-998D42C4A5E2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A0E79D7A-5DCC-4D0E-90D1-998D42C4A5E2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A0E79D7A-5DCC-4D0E-90D1-998D42C4A5E2}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

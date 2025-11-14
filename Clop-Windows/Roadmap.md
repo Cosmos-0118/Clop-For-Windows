@@ -97,7 +97,7 @@ Clop-Windows/
   - Expanded `ShortcutCatalog` into a settings-backed registry with dynamic bindings, remapping helpers, and conflict detection, plus live re-registration in `KeyboardShortcutService`.
   - Surfaced in-app and global shortcuts inside Settings with capture/clear/reset UI and a shortcut recording dialog so users can rebind keys without touching JSON.
   - Documented drop-zone pointer gestures (Alt to reveal overlay, Ctrl for preset zones, right-click for HUD context menus) alongside keyboard coverage in `docs/architecture.md`.
-- [ ] **P4.4 – Localization & accessibility**: Ensure UI texts reuse the macOS strings and pass Windows accessibility checks (High Contrast, screen readers).
+- [x] **P4.4 – Localization & accessibility**: Ensure UI texts reuse the macOS strings and pass Windows accessibility checks (High Contrast, screen readers).
 
 ### Phase 5 – Support CTA, Telemetry, Packaging
 

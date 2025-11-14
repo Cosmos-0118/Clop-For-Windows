@@ -25,4 +25,11 @@
   <ItemGroup>
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\..\Clop\Localization\en.json">
+      <Link>Resources\strings.en.json</Link>
+      <LogicalName>ClopWindows.App.Resources.strings.en.json</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
 </Project>

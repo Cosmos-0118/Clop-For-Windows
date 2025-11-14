@@ -17,6 +17,7 @@ namespace ClopWindows.Core.Optimizers;
 public sealed class ImageOptimiser : IOptimiser
 {
     private static readonly ImageCodecInfo[] ImageEncoders = ImageCodecInfo.GetImageEncoders();
+    private const int MinJpegFallbackQuality = 50;
     private readonly ImageOptimiserOptions _options;
 
     public ImageOptimiser(ImageOptimiserOptions? options = null)
@@ -104,10 +105,21 @@ public sealed class ImageOptimiser : IOptimiser
             var originalSize = SafeFileSize(sourcePath);
             var optimisedSize = SafeFileSize(tempOutput.Value);
 
-            if (_options.RequireSizeImprovement && !shouldStripMetadata && optimisedSize >= originalSize)
+            if (_options.RequireSizeImprovement && optimisedSize >= originalSize)
             {
-                context.ReportProgress(95, "No size improvement; keeping original");
-                return new OptimisationResult(request.RequestId, OptimisationStatus.Succeeded, sourcePath, "Original already optimal");
+                if (profile.Format.Guid == ImageFormat.Jpeg.Guid &&
+                    TryReduceJpegSize(workingBitmap, originalSize, profile.TargetQuality ?? 82L, cancellationToken, out var tunedPath, out var tunedSize))
+                {
+                    TryDelete(tempOutput.Value);
+                    tempOutput = tunedPath;
+                    optimisedSize = tunedSize;
+                    context.ReportProgress(85, "Adjusted JPEG quality");
+                }
+                else
+                {
+                    context.ReportProgress(95, "No size improvement; keeping original");
+                    return new OptimisationResult(request.RequestId, OptimisationStatus.Succeeded, sourcePath, "Original already optimal");
+                }
             }
 
             File.Copy(tempOutput.Value.Value, outputPath.Value, overwrite: true);
@@ -300,6 +312,97 @@ public sealed class ImageOptimiser : IOptimiser
         return diff > 0
             ? $"Saved {diff.HumanSize()} ({originalSize.HumanSize()} → {optimisedSize.HumanSize()})"
             : "Re-encoded";
+    }
+
+    private static bool TryReduceJpegSize(Image bitmap, long maxBytes, long startingQuality, CancellationToken token, out FilePath path, out long size)
+    {
+        path = default;
+        size = 0;
+
+        var start = (int)Math.Clamp(startingQuality, 1L, 100L);
+        var high = start - 1;
+        if (high < MinJpegFallbackQuality)
+        {
+            return false;
+        }
+
+        var codec = GetEncoder(ImageFormat.Jpeg);
+        if (codec is null)
+        {
+            return false;
+        }
+
+        var low = MinJpegFallbackQuality;
+        var bestSize = long.MaxValue;
+        FilePath? bestCandidate = null;
+        var scratch = new List<FilePath>();
+
+        while (low <= high)
+        {
+            token.ThrowIfCancellationRequested();
+
+            var quality = (low + high) / 2;
+            var candidate = FilePath.TempFile("clop-image-quality", "jpg", addUniqueSuffix: true);
+
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(candidate.Value) ?? Path.GetTempPath());
+                using var encoderParameters = new EncoderParameters(1);
+                encoderParameters.Param[0] = new EncoderParameter(Encoder.Quality, quality);
+                bitmap.Save(candidate.Value, codec, encoderParameters);
+            }
+            catch
+            {
+                TryDelete(candidate);
+                throw;
+            }
+
+            var candidateSize = SafeFileSize(candidate);
+            if (candidateSize <= 0)
+            {
+                scratch.Add(candidate);
+                break;
+            }
+
+            if (candidateSize < maxBytes)
+            {
+                if (candidateSize < bestSize)
+                {
+                    if (bestCandidate is { } previousBest)
+                    {
+                        scratch.Add(previousBest);
+                    }
+
+                    bestCandidate = candidate;
+                    bestSize = candidateSize;
+                }
+                else
+                {
+                    scratch.Add(candidate);
+                }
+
+                high = quality - 1;
+            }
+            else
+            {
+                scratch.Add(candidate);
+                low = quality + 1;
+            }
+        }
+
+        foreach (var leftover in scratch)
+        {
+            TryDelete(leftover);
+        }
+
+        if (bestCandidate is null)
+        {
+            return false;
+        }
+
+        path = bestCandidate.Value;
+        size = bestSize;
+        return true;
     }
 
     private static long SafeFileSize(FilePath path)

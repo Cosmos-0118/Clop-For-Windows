@@ -1,6 +1,8 @@
 using System;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
+using ClopWindows.App.Localization;
 
 namespace ClopWindows.App.Views.Dialogs;
 
@@ -27,9 +29,11 @@ public partial class ShortcutCaptureDialog : Window
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         Loaded -= OnLoaded;
-        ScopeText.Text = string.IsNullOrWhiteSpace(ScopeLabel) ? string.Empty : $"Scope: {ScopeLabel}";
-        CurrentText.Text = $"Current: {CurrentBinding}";
-        DefaultText.Text = $"Default: {DefaultBinding}";
+        ScopeText.Text = string.IsNullOrWhiteSpace(ScopeLabel)
+            ? string.Empty
+            : string.Format(CultureInfo.CurrentCulture, ClopStringCatalog.Get("shortcuts.capture.scopeFormat"), ScopeLabel);
+        CurrentText.Text = string.Format(CultureInfo.CurrentCulture, ClopStringCatalog.Get("settings.shortcuts.currentFormat"), CurrentBinding);
+        DefaultText.Text = string.Format(CultureInfo.CurrentCulture, ClopStringCatalog.Get("settings.shortcuts.defaultFormat"), DefaultBinding);
         FocusManager.SetFocusedElement(this, this);
         Keyboard.Focus(this);
     }

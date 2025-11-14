@@ -1,7 +1,8 @@
 <Window x:Class="ClopWindows.App.Views.FloatingHud.FloatingHudWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:viewModels="clr-namespace:ClopWindows.App.ViewModels"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:loc="clr-namespace:ClopWindows.App.Localization"
+    xmlns:viewModels="clr-namespace:ClopWindows.App.ViewModels"
         Title="Clop Floating HUD"
         AllowsTransparency="True"
         Background="Transparent"
@@ -15,7 +16,8 @@
         Focusable="False"
         SnapsToDevicePixels="True"
         Loaded="OnLoaded"
-        SizeChanged="OnSizeChanged">
+        SizeChanged="OnSizeChanged"
+        AutomationProperties.Name="{loc:Loc hud.title}">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <DropShadowEffect x:Key="HudShadow"
@@ -54,7 +56,7 @@
         </Style>
     </Window.Resources>
 
-    <Border Background="#E6202020"
+    <Border Background="{DynamicResource Brush.HudBackground}"
             CornerRadius="14"
             Padding="16"
             Effect="{StaticResource HudShadow}">
@@ -66,19 +68,19 @@
             </Grid.RowDefinitions>
 
             <TextBlock Grid.Row="0"
-                       Text="Optimisations"
+                       Text="{loc:Loc hud.title}"
                        FontSize="14"
                        FontWeight="SemiBold"
-                       Foreground="#F0F0F0"
+                       Foreground="{DynamicResource Brush.HudTextPrimary}"
                        Margin="4,0,4,12"
                        Visibility="{Binding HasResults, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
             <Border Grid.Row="1"
                     CornerRadius="10"
-                    Background="#10000000"
+                    Background="{DynamicResource Brush.HudCardBorder}"
                     Padding="0"
                     Visibility="{Binding HasResults, Converter={StaticResource BooleanToVisibilityConverter}}">
-                <ScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" MaxHeight="420">
+                <ScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" MaxHeight="420" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="{loc:Loc hud.automation.name}" AutomationProperties.HelpText="{loc:Loc hud.automation.help}">
                     <ItemsControl ItemsSource="{Binding Results}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -87,7 +89,7 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="{x:Type viewModels:FloatingResultViewModel}">
-                                <Border Background="#262626"
+                                <Border Background="{DynamicResource Brush.HudCardBackground}"
                                         CornerRadius="10"
                                         Padding="12"
                                         Margin="0,0,0,10">
@@ -106,13 +108,13 @@
                                                    Grid.Column="0"
                                                    Text="{Binding DisplayName}"
                                                    FontWeight="SemiBold"
-                                                   Foreground="White"
+                                                   Foreground="{DynamicResource Brush.HudTextPrimary}"
                                                    TextTrimming="CharacterEllipsis"
                                                    Margin="0,0,24,2" />
 
                                         <TextBlock Grid.Row="1"
                                                    Grid.Column="0"
-                                                   Foreground="#B3FFFFFF"
+                                                   Foreground="{DynamicResource Brush.HudTextSecondary}"
                                                    Text="{Binding Subtitle}"
                                                    FontSize="12"
                                                    TextTrimming="CharacterEllipsis"
@@ -141,7 +143,7 @@
 
                                         <TextBlock Grid.Row="2"
                                                    Grid.Column="0"
-                                                   Foreground="#B3FFFFFF"
+                                                   Foreground="{DynamicResource Brush.HudTextSecondary}"
                                                    Text="{Binding SizeSummary}"
                                                    FontSize="12"
                                                    Margin="0,18,24,0">
@@ -167,8 +169,8 @@
                                                      VerticalAlignment="Top"
                                                      Value="{Binding Progress, Mode=OneWay}"
                                                      Maximum="100"
-                                                     Foreground="#7A91FF"
-                                                     Background="#1AFFFFFF"
+                                                     Foreground="{DynamicResource Brush.HudProgress}"
+                                                     Background="{DynamicResource Brush.HudProgressBackground}"
                                                      Visibility="{Binding IsRunning, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
                                         <Button Grid.Row="0"
@@ -194,7 +196,7 @@
                 </ScrollViewer>
             </Border>
 
-            <Border Grid.Row="1" Padding="12" Background="#1AFFFFFF" CornerRadius="10">
+            <Border Grid.Row="1" Padding="12" Background="{DynamicResource Brush.HudCardBorder}" CornerRadius="10">
                 <Border.Style>
                     <Style TargetType="Border">
                         <Setter Property="Visibility" Value="Collapsed" />
@@ -206,8 +208,8 @@
                     </Style>
                 </Border.Style>
                 <StackPanel>
-                    <TextBlock Text="Optimisations appear here" Foreground="#F0F0F0" FontWeight="SemiBold" />
-                    <TextBlock Text="Run an optimisation or copy an image to the clipboard to see live status." Foreground="#B3FFFFFF" TextWrapping="Wrap" Margin="0,4,0,0" FontSize="12" />
+                    <TextBlock Text="{loc:Loc hud.empty.title}" Foreground="{DynamicResource Brush.HudTextPrimary}" FontWeight="SemiBold" />
+                    <TextBlock Text="{loc:Loc hud.empty.description}" Foreground="{DynamicResource Brush.HudTextSecondary}" TextWrapping="Wrap" Margin="0,4,0,0" FontSize="12" />
                 </StackPanel>
             </Border>
         </Grid>
