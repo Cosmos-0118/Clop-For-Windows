@@ -37,3 +37,10 @@ This matrix maps every macOS Swift source file to the Windows project area that 
 | `ClopCLI/main.swift`                         | `CliBridge/Program.cs`                                                     | ArgumentParser-based CLI, ensures GUI app is running, forwards requests over Mach ports, formats help text, and shares size/crop parsing logic. Share the same tokens (`%y`, `%f`, etc.) across platforms.                                                     |
 | `ClopCLI/Colorize.swift`                     | `CliBridge/Console/Colorize.cs`                                            | ANSI colour helper for CLI output, including enable/disable toggles via `isatty`. Wrap Windows Console APIs but keep method names for reuse.                                                                                                                   |
 | `FinderOptimiser/ActionRequestHandler.swift` | `Integrations/Explorer/ContextMenuHandler.cpp/.cs`                         | Finder extension plumbing that copies sandboxed files, listens for optimiser responses, and handles completion/error propagation. Windows Explorer extension must mimic attachment batching and timeout handling.                                              |
+
+## Keyboard & Input
+
+- `App/Infrastructure/ShortcutCatalog.cs` centralises WPF accelerators (`Ctrl+O`, `Ctrl+,`, `Ctrl+1`–`3`) so navigation and browse actions stay in sync with macOS defaults.
+- `App/Services/KeyboardShortcutService.cs` registers global shortcuts via `user32.RegisterHotKey`, using the shared `ShortcutCatalog` metadata and Windows `MOD_NOREPEAT` to prevent repeats.
+- Global "Sauce" shortcuts default to `Ctrl+Shift` combos (`Space`, `F`, `C`) that focus the main window, toggle floating results, and toggle the clipboard optimiser.
+- Pointer gestures mirror macOS drop-zone behaviour: standard drag drops onto the floating HUD, holding `Alt` reveals the full drop-zone overlay, and pressing `Ctrl` while dragging exposes preset zones. Right-click continues to surface the per-result context menu for restore/compare actions, matching SwiftUI interactions.

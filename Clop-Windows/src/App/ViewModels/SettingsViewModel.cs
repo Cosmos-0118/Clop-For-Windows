@@ -1,4 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
+using ClopWindows.App.Infrastructure;
 using ClopWindows.Core.Settings;
 
 namespace ClopWindows.App.ViewModels;
@@ -16,12 +20,39 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     private bool _enableAutomaticVideoOptimisations;
     private bool _enableAutomaticPdfOptimisations;
     private bool _suppressStoreUpdates;
+    private readonly Dictionary<ShortcutId, ShortcutPreferenceViewModel> _shortcutLookup;
+
+    public IReadOnlyList<ShortcutPreferenceViewModel> AppShortcutPreferences { get; }
+    public IReadOnlyList<ShortcutPreferenceViewModel> GlobalShortcutPreferences { get; }
 
     public SettingsViewModel()
     {
         SettingsHost.EnsureInitialized();
+        ShortcutCatalog.Initialize();
         Load();
         SettingsHost.SettingChanged += OnSettingChanged;
+        ShortcutCatalog.ShortcutChanged += OnShortcutChanged;
+        var descriptors = ShortcutCatalog.Descriptors;
+        var appShortcuts = new List<ShortcutPreferenceViewModel>();
+        var globalShortcuts = new List<ShortcutPreferenceViewModel>();
+        _shortcutLookup = new Dictionary<ShortcutId, ShortcutPreferenceViewModel>();
+
+        foreach (var descriptor in descriptors)
+        {
+            var vm = new ShortcutPreferenceViewModel(descriptor);
+            _shortcutLookup[descriptor.Id] = vm;
+            if (descriptor.Scope == ShortcutScope.MainWindow)
+            {
+                appShortcuts.Add(vm);
+            }
+            else
+            {
+                globalShortcuts.Add(vm);
+            }
+        }
+
+        AppShortcutPreferences = new ReadOnlyCollection<ShortcutPreferenceViewModel>(appShortcuts);
+        GlobalShortcutPreferences = new ReadOnlyCollection<ShortcutPreferenceViewModel>(globalShortcuts);
     }
 
     public bool EnableFloatingResults
@@ -204,5 +235,14 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         SettingsHost.SettingChanged -= OnSettingChanged;
+        ShortcutCatalog.ShortcutChanged -= OnShortcutChanged;
+    }
+
+    private void OnShortcutChanged(object? sender, ShortcutChangedEventArgs e)
+    {
+        if (_shortcutLookup.TryGetValue(e.Id, out var viewModel))
+        {
+            viewModel.Refresh();
+        }
     }
 }

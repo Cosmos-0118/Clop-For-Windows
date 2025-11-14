@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -344,19 +345,29 @@ public sealed record PdfToolchainResult(bool Success, string? ErrorMessage = nul
 
 internal sealed class ExternalPdfToolchain : IPdfToolchain
 {
-    private readonly PdfOptimiserOptions _options;
+    private readonly object _sync = new();
+    private PdfOptimiserOptions _options;
 
     public ExternalPdfToolchain(PdfOptimiserOptions options)
     {
         _options = options;
     }
 
-    public async Task<PdfToolchainResult> OptimiseAsync(PdfOptimiserPlan plan, FilePath tempOutput, OptimiserExecutionContext context, CancellationToken cancellationToken)
+    public Task<PdfToolchainResult> OptimiseAsync(PdfOptimiserPlan plan, FilePath tempOutput, OptimiserExecutionContext context, CancellationToken cancellationToken)
+        => OptimiseInternalAsync(plan, tempOutput, context, cancellationToken, attempt: 0);
+
+    private async Task<PdfToolchainResult> OptimiseInternalAsync(PdfOptimiserPlan plan, FilePath tempOutput, OptimiserExecutionContext context, CancellationToken cancellationToken, int attempt)
     {
-        var executable = _options.GhostscriptPath;
+        if (attempt > 1)
+        {
+            return PdfToolchainResult.Failure("Ghostscript executable was not found after refreshing the installation cache.");
+        }
+
+        var options = EnsureGhostscriptOptions();
+        var executable = options.GhostscriptPath;
         if (string.IsNullOrWhiteSpace(executable))
         {
-            return PdfToolchainResult.Failure("Ghostscript path is not configured.");
+            return PdfToolchainResult.Failure("Ghostscript executable not found. Install Ghostscript 10.x or set the CLOP_GS environment variable to the gswin64c.exe path.");
         }
 
         if (Path.IsPathRooted(executable) && !File.Exists(executable))
@@ -364,7 +375,7 @@ internal sealed class ExternalPdfToolchain : IPdfToolchain
             return PdfToolchainResult.Failure($"Ghostscript not found at '{executable}'");
         }
 
-        var args = BuildArguments(plan, tempOutput);
+        var args = BuildArguments(options, plan, tempOutput);
         var tracker = new GhostscriptProgressTracker();
 
         var startInfo = new ProcessStartInfo(executable)
@@ -380,7 +391,7 @@ internal sealed class ExternalPdfToolchain : IPdfToolchain
             startInfo.ArgumentList.Add(arg);
         }
 
-        var gsLib = plan.GhostscriptResourcePath ?? _options.GhostscriptResourceDirectory;
+        var gsLib = plan.GhostscriptResourcePath ?? options.GhostscriptResourceDirectory;
         if (!string.IsNullOrWhiteSpace(gsLib))
         {
             startInfo.Environment["GS_LIB"] = gsLib;
@@ -419,8 +430,17 @@ internal sealed class ExternalPdfToolchain : IPdfToolchain
         {
             if (!process.Start())
             {
-                return PdfToolchainResult.Failure("Unable to start Ghostscript.");
+                return PdfToolchainResult.Failure($"Unable to start Ghostscript at '{executable}'.");
             }
+        }
+        catch (Win32Exception win32) when (win32.NativeErrorCode == 2)
+        {
+            lock (_sync)
+            {
+                _options = _options.RefreshGhostscript();
+            }
+
+            return await OptimiseInternalAsync(plan, tempOutput, context, cancellationToken, attempt + 1).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -463,11 +483,11 @@ internal sealed class ExternalPdfToolchain : IPdfToolchain
         return PdfToolchainResult.Successful();
     }
 
-    private IReadOnlyList<string> BuildArguments(PdfOptimiserPlan plan, FilePath output)
+    private IReadOnlyList<string> BuildArguments(PdfOptimiserOptions options, PdfOptimiserPlan plan, FilePath output)
     {
         var args = new List<string>();
-        args.AddRange(_options.BaseArguments);
-        args.AddRange(plan.AggressiveCompression ? _options.LossyArguments : _options.LosslessArguments);
+        args.AddRange(options.BaseArguments);
+        args.AddRange(plan.AggressiveCompression ? options.LossyArguments : options.LosslessArguments);
         args.Add("-sDEVICE=pdfwrite");
         args.Add($"-sFONTPATH={plan.FontPath}");
         args.Add("-o");
@@ -475,17 +495,45 @@ internal sealed class ExternalPdfToolchain : IPdfToolchain
 
         if (plan.StripMetadata)
         {
-            args.AddRange(_options.MetadataPreArguments);
+            args.AddRange(options.MetadataPreArguments);
         }
 
         args.Add(plan.SourcePath.Value);
 
         if (plan.StripMetadata)
         {
-            args.AddRange(_options.MetadataPostArguments);
+            args.AddRange(options.MetadataPostArguments);
         }
 
         return args;
+    }
+
+    private PdfOptimiserOptions EnsureGhostscriptOptions()
+    {
+        lock (_sync)
+        {
+            if (IsExecutableMissing(_options.GhostscriptPath))
+            {
+                _options = _options.RefreshGhostscript();
+            }
+
+            return _options;
+        }
+    }
+
+    private static bool IsExecutableMissing(string? executable)
+    {
+        if (string.IsNullOrWhiteSpace(executable))
+        {
+            return true;
+        }
+
+        if (!Path.IsPathRooted(executable))
+        {
+            return true;
+        }
+
+        return !File.Exists(executable);
     }
 }
 

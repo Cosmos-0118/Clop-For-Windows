@@ -2,12 +2,18 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace ClopWindows.Core.Optimizers;
 
 public sealed record PdfOptimiserOptions
 {
     public static PdfOptimiserOptions Default { get; } = new();
+
+    private static readonly TimeSpan InstallationCacheDuration = TimeSpan.FromMinutes(5);
+    private static readonly object InstallationLock = new();
+    private static GhostscriptInstallation? _cachedInstallation;
+    private static DateTimeOffset _cachedInstallationTimestamp;
 
     public string GhostscriptPath { get; init; } = ResolveGhostscriptPath();
 
@@ -33,30 +39,71 @@ public sealed record PdfOptimiserOptions
 
     public IReadOnlyList<string> MetadataPostArguments { get; init; } = DefaultGhostscriptArguments.MetadataPost;
 
-    private static string ResolveGhostscriptPath()
+    public PdfOptimiserOptions RefreshGhostscript()
     {
-        var env = Environment.GetEnvironmentVariable("CLOP_GS") ?? Environment.GetEnvironmentVariable("GS_EXECUTABLE");
-        if (!string.IsNullOrWhiteSpace(env))
-        {
-            return env!;
-        }
-
-        var baseDir = AppContext.BaseDirectory;
-        var bundled = Path.Combine(baseDir, "tools", "ghostscript", "gswin64c.exe");
-        return File.Exists(bundled) ? bundled : "gswin64c.exe";
+        var refreshedPath = ResolveGhostscriptPath(forceRefresh: true);
+        var refreshedResource = ResolveGhostscriptResourceDirectory(forceRefresh: true);
+        return this with { GhostscriptPath = refreshedPath, GhostscriptResourceDirectory = refreshedResource };
     }
 
-    private static string? ResolveGhostscriptResourceDirectory()
+    private static string ResolveGhostscriptPath(bool forceRefresh = false)
     {
-        var env = Environment.GetEnvironmentVariable("CLOP_GS_LIB") ?? Environment.GetEnvironmentVariable("GS_LIB");
-        if (!string.IsNullOrWhiteSpace(env))
+        try
         {
-            return env!;
+            var env = Environment.GetEnvironmentVariable("CLOP_GS") ?? Environment.GetEnvironmentVariable("GS_EXECUTABLE");
+            if (!string.IsNullOrWhiteSpace(env))
+            {
+                return env!;
+            }
+
+            var baseDir = GetBaseDirectory();
+            foreach (var path in EnumeratePossibleFiles(baseDir, new[] { "tools", "ghostscript", "gswin64c.exe" }))
+            {
+                if (!string.IsNullOrWhiteSpace(path))
+                {
+                    return path!;
+                }
+            }
+
+            var installation = GetCachedInstallation(forceRefresh);
+            if (installation is not null && !string.IsNullOrWhiteSpace(installation.ExecutablePath))
+            {
+                return installation.ExecutablePath;
+            }
+        }
+        catch
+        {
+            // fall back to default executable name below
         }
 
-        var baseDir = AppContext.BaseDirectory;
-        var bundled = Path.Combine(baseDir, "tools", "ghostscript", "Resource", "Init");
-        return Directory.Exists(bundled) ? bundled : null;
+        return "gswin64c.exe";
+    }
+
+    private static string? ResolveGhostscriptResourceDirectory(bool forceRefresh = false)
+    {
+        try
+        {
+            var env = Environment.GetEnvironmentVariable("CLOP_GS_LIB") ?? Environment.GetEnvironmentVariable("GS_LIB");
+            if (!string.IsNullOrWhiteSpace(env))
+            {
+                return env!;
+            }
+
+            var baseDir = GetBaseDirectory();
+            foreach (var path in EnumeratePossibleDirectories(baseDir, new[] { "tools", "ghostscript", "Resource", "Init" }))
+            {
+                if (!string.IsNullOrWhiteSpace(path))
+                {
+                    return path!;
+                }
+            }
+
+            return GetCachedInstallation(forceRefresh)?.ResourceDirectory;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static string ResolveFontSearchPath()
@@ -94,6 +141,236 @@ public sealed record PdfOptimiserOptions
         }
 
         return Path.Combine(new[] { root! }.Concat(segments).ToArray());
+    }
+
+    private static GhostscriptInstallation? GetCachedInstallation(bool forceRefresh)
+    {
+        lock (InstallationLock)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var hasCached = _cachedInstallationTimestamp != default;
+            var cachedStillValid = hasCached && now - _cachedInstallationTimestamp < InstallationCacheDuration;
+            var cachedMissing = _cachedInstallation is not null && !File.Exists(_cachedInstallation.ExecutablePath);
+
+            if (!forceRefresh && hasCached && cachedStillValid && !cachedMissing)
+            {
+                return _cachedInstallation;
+            }
+
+            var installation = DiscoverGhostscriptInstallation();
+
+            if (installation is null)
+            {
+                _cachedInstallation = null;
+                _cachedInstallationTimestamp = default;
+            }
+            else
+            {
+                _cachedInstallation = installation;
+                _cachedInstallationTimestamp = now;
+            }
+
+            return installation;
+        }
+    }
+
+    private static GhostscriptInstallation? DiscoverGhostscriptInstallation()
+    {
+        foreach (var executable in EnumerateInstalledExecutables())
+        {
+            if (TryCreateInstallation(executable, out var installation))
+            {
+                return installation;
+            }
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<string> EnumerateInstalledExecutables()
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var candidate in EnumerateCandidates())
+        {
+            if (File.Exists(candidate) && seen.Add(candidate))
+            {
+                yield return candidate;
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateCandidates()
+    {
+        static IEnumerable<string> EnumerateUnder(string? root)
+        {
+            if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
+            {
+                yield break;
+            }
+
+            string[] subdirectories;
+            try
+            {
+                subdirectories = Directory.GetDirectories(root, "gs*", SearchOption.TopDirectoryOnly);
+            }
+            catch
+            {
+                yield break;
+            }
+
+            foreach (var dir in subdirectories.OrderByDescending(ParseVersion))
+            {
+                var direct = Path.Combine(dir, "gswin64c.exe");
+                if (File.Exists(direct))
+                {
+                    yield return direct;
+                }
+
+                var bin = Path.Combine(dir, "bin", "gswin64c.exe");
+                if (File.Exists(bin))
+                {
+                    yield return bin;
+                }
+            }
+        }
+
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        if (!string.IsNullOrWhiteSpace(programFiles))
+        {
+            foreach (var exe in EnumerateUnder(Path.Combine(programFiles, "gs")))
+            {
+                yield return exe;
+            }
+        }
+
+        var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        if (!string.IsNullOrWhiteSpace(programFilesX86))
+        {
+            foreach (var exe in EnumerateUnder(Path.Combine(programFilesX86, "gs")))
+            {
+                yield return exe;
+            }
+        }
+    }
+
+    private static Version ParseVersion(string path)
+    {
+        var name = Path.GetFileName(path) ?? string.Empty;
+        var digits = Regex.Match(name, "gs(?<version>[0-9][0-9A-Za-z_.-]*)");
+        if (!digits.Success)
+        {
+            return new Version(0, 0);
+        }
+
+        var value = digits.Groups["version"].Value.Replace('_', '.');
+        return Version.TryParse(value, out var version) ? version : new Version(0, 0);
+    }
+
+    private static bool TryCreateInstallation(string executable, out GhostscriptInstallation installation)
+    {
+        installation = default!;
+
+        if (!File.Exists(executable))
+        {
+            return false;
+        }
+
+        var exeDirectory = Path.GetDirectoryName(executable);
+        string? rootDirectory = exeDirectory;
+
+        if (!string.IsNullOrEmpty(exeDirectory))
+        {
+            var parent = Directory.GetParent(exeDirectory);
+            if (parent is not null && string.Equals(Path.GetFileName(exeDirectory), "bin", StringComparison.OrdinalIgnoreCase))
+            {
+                rootDirectory = parent.FullName;
+            }
+        }
+
+        var resource = rootDirectory is null
+            ? null
+            : Path.Combine(rootDirectory, "Resource", "Init");
+
+        if (resource is not null && !Directory.Exists(resource))
+        {
+            resource = null;
+        }
+
+        installation = new GhostscriptInstallation(executable, resource);
+        return true;
+    }
+
+    private static string? GetBaseDirectory()
+    {
+        var baseDir = AppContext.BaseDirectory;
+        if (string.IsNullOrWhiteSpace(baseDir))
+        {
+            baseDir = AppDomain.CurrentDomain.BaseDirectory;
+        }
+
+        if (string.IsNullOrWhiteSpace(baseDir))
+        {
+            baseDir = Environment.CurrentDirectory;
+        }
+
+        return baseDir;
+    }
+
+    private static IEnumerable<string?> EnumeratePossibleFiles(string? baseDir, string[] relativeSegments)
+    {
+        foreach (var combined in EnumerateCandidatePaths(baseDir, relativeSegments))
+        {
+            if (combined is not null && File.Exists(combined))
+            {
+                yield return combined;
+            }
+        }
+    }
+
+    private static IEnumerable<string?> EnumeratePossibleDirectories(string? baseDir, string[] relativeSegments)
+    {
+        foreach (var combined in EnumerateCandidatePaths(baseDir, relativeSegments))
+        {
+            if (combined is not null && Directory.Exists(combined))
+            {
+                yield return combined;
+            }
+        }
+    }
+
+    private static IEnumerable<string?> EnumerateCandidatePaths(string? baseDir, string[] relativeSegments)
+    {
+        if (!string.IsNullOrWhiteSpace(baseDir))
+        {
+            yield return SafeCombine(baseDir!, relativeSegments);
+            yield return SafeCombine(baseDir!, new[] { "..", "..", "..", ".." }.Concat(relativeSegments).ToArray());
+        }
+
+        var executingDir = Path.GetDirectoryName(typeof(PdfOptimiserOptions).Assembly.Location);
+        if (!string.IsNullOrWhiteSpace(executingDir))
+        {
+            yield return SafeCombine(executingDir!, relativeSegments);
+            yield return SafeCombine(executingDir!, new[] { "..", ".." }.Concat(relativeSegments).ToArray());
+        }
+    }
+
+    private static string? SafeCombine(string root, params string[] segments)
+    {
+        if (string.IsNullOrWhiteSpace(root))
+        {
+            return null;
+        }
+
+        try
+        {
+            var path = Path.Combine(new[] { root }.Concat(segments).ToArray());
+            return Path.GetFullPath(path);
+        }
+        catch
+        {
+            return null;
+        }
     }
 }
 
@@ -210,3 +487,5 @@ internal static class DefaultGhostscriptArguments
         "-c", "[ /Producer () /ModDate () /CreationDate () /DOCINFO pdfmark", "-f"
     };
 }
+
+internal sealed record GhostscriptInstallation(string ExecutablePath, string? ResourceDirectory);

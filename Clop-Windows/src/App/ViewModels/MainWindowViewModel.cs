@@ -1,6 +1,8 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Windows.Input;
+using ClopWindows.App.Infrastructure;
 using ClopWindows.Core.Settings;
 
 namespace ClopWindows.App.ViewModels;
@@ -10,6 +12,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private readonly OnboardingViewModel _onboardingViewModel;
     private readonly CompareViewModel _compareViewModel;
     private readonly SettingsViewModel _settingsViewModel;
+    private readonly NavigationItemViewModel _onboardingItem;
+    private readonly NavigationItemViewModel _compareItem;
+    private readonly NavigationItemViewModel _settingsItem;
     private NavigationItemViewModel? _selectedItem;
     private ObservableObject? _currentView;
 
@@ -29,6 +34,19 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             new NavigationItemViewModel(MainSection.Settings, "Settings", "Adjust optimisation defaults")
         };
 
+        _onboardingItem = NavigationItems.First(item => item.Section == MainSection.Onboarding);
+        _compareItem = NavigationItems.First(item => item.Section == MainSection.Compare);
+        _settingsItem = NavigationItems.First(item => item.Section == MainSection.Settings);
+
+        ShowOnboardingCommand = new RelayCommand(_ => SelectedItem = _onboardingItem);
+        ShowCompareCommand = new RelayCommand(_ => SelectedItem = _compareItem);
+        ShowSettingsCommand = new RelayCommand(_ => SelectedItem = _settingsItem);
+        BrowseFilesCommand = new RelayCommand(_ =>
+        {
+            SelectedItem = _compareItem;
+            _compareViewModel.TriggerBrowseDialog();
+        });
+
         _onboardingViewModel.OnboardingCompleted += HandleOnboardingCompleted;
 
         var defaultSection = SettingsHost.Get(SettingsRegistry.FinishedOnboarding)
@@ -39,6 +57,14 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     public ObservableCollection<NavigationItemViewModel> NavigationItems { get; }
+
+    public ICommand ShowOnboardingCommand { get; }
+
+    public ICommand ShowCompareCommand { get; }
+
+    public ICommand ShowSettingsCommand { get; }
+
+    public ICommand BrowseFilesCommand { get; }
 
     public NavigationItemViewModel? SelectedItem
     {
@@ -76,8 +102,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     private void HandleOnboardingCompleted(object? sender, EventArgs e)
     {
-        var compare = NavigationItems.First(item => item.Section == MainSection.Compare);
-        SelectedItem = compare;
+        SelectedItem = _compareItem;
     }
 
     public void Dispose()

@@ -1,6 +1,7 @@
 using System.Windows;
 using ClopWindows.App.Services;
 using ClopWindows.App.ViewModels;
+using ClopWindows.App.Infrastructure;
 
 namespace ClopWindows.App;
 
@@ -12,6 +13,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = viewModel;
+        ShortcutCatalog.ApplyMainWindowBindings(InputBindings, viewModel);
         _shortcutService = shortcutService;
         Loaded += OnLoaded;
     }

@@ -93,9 +93,10 @@ Clop-Windows/
 - [x] **P4.1 – Floating HUD**: Recreate the SwiftUI floating results (`FloatingResult.swift`, `CompactResult.swift`) as WPF windows with acrylic/compact styling (Win32 composition brushes or WinAppSDK interop where useful). Include progress bars, preview thumbnails, and quick actions.
 - [x] **P4.2 – Main shell**: Implement Settings, Onboarding, and Compare views (feature toggles, aggressive optimisation switches, preset editors) in WPF MVVM, mirroring `SettingsView.swift`, `CompareView.swift`, `Onboarding.swift`.
   - Implemented navigation rail, onboarding tour, compare intake, and settings panels bound to `SettingsHost` with DI wiring.
-- [ ] **P4.3 – Keyboard + gesture support**: Map hotkeys (`SauceKey` equivalents) to Windows accelerator keys and global shortcuts, keeping defaults in sync. Document interplay with Windows input APIs.
-  - In progress: wiring window accelerators and global modifier shortcuts that toggle clipboard watchers and floating HUD visibility.
-- [ ] **P4.3 – Keyboard + gesture support**: Map hotkeys (`SauceKey` equivalents) to Windows accelerator keys and global shortcuts, keeping defaults in sync. Document interplay with Windows input APIs.
+- [x] **P4.3 – Keyboard + gesture support**: Map hotkeys (`SauceKey` equivalents) to Windows accelerator keys and global shortcuts, keeping defaults in sync. Document interplay with Windows input APIs.
+  - Expanded `ShortcutCatalog` into a settings-backed registry with dynamic bindings, remapping helpers, and conflict detection, plus live re-registration in `KeyboardShortcutService`.
+  - Surfaced in-app and global shortcuts inside Settings with capture/clear/reset UI and a shortcut recording dialog so users can rebind keys without touching JSON.
+  - Documented drop-zone pointer gestures (Alt to reveal overlay, Ctrl for preset zones, right-click for HUD context menus) alongside keyboard coverage in `docs/architecture.md`.
 - [ ] **P4.4 – Localization & accessibility**: Ensure UI texts reuse the macOS strings and pass Windows accessibility checks (High Contrast, screen readers).
 
 ### Phase 5 – Support CTA, Telemetry, Packaging

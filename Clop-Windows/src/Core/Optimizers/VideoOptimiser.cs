@@ -268,7 +268,7 @@ public sealed class VideoOptimiser : IOptimiser
             ? options.DefaultVideoExtension
             : outputExtension.Trim().TrimStart('.');
 
-        var filters = BuildFilters(maxWidth, maxHeight, playbackSpeed, options.EnforceEvenDimensions);
+        var filters = BuildFilters(maxWidth, maxHeight, playbackSpeed, options.EnforceEvenDimensions, capFps, targetFps);
 
         return new VideoOptimiserPlan(
             request.SourcePath,
@@ -292,7 +292,7 @@ public sealed class VideoOptimiser : IOptimiser
             gifQuality);
     }
 
-    private static IReadOnlyList<string> BuildFilters(int? maxWidth, int? maxHeight, double? playbackSpeed, bool enforceEven)
+    private static IReadOnlyList<string> BuildFilters(int? maxWidth, int? maxHeight, double? playbackSpeed, bool enforceEven, bool capFps, int targetFps)
     {
         var filters = new List<string>();
         if (maxWidth.HasValue || maxHeight.HasValue)
@@ -306,6 +306,11 @@ public sealed class VideoOptimiser : IOptimiser
         {
             var factor = playbackSpeed.Value.ToString(CultureInfo.InvariantCulture);
             filters.Add($"setpts=PTS/{factor}");
+        }
+
+        if (capFps && targetFps > 0)
+        {
+            filters.Add($"fps={targetFps}");
         }
 
         return filters;
@@ -513,12 +518,6 @@ internal sealed class ExternalVideoToolchain : IVideoToolchain
             "-y",
             "-i", plan.SourcePath.Value
         };
-
-        if (plan.CapFps && plan.TargetFps > 0)
-        {
-            args.Add("-fpsmax");
-            args.Add(plan.TargetFps.ToInvariantString());
-        }
 
         if (plan.RequiresFilters)
         {

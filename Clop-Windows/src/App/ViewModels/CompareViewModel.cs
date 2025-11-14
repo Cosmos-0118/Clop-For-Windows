@@ -36,7 +36,7 @@ public sealed class CompareViewModel : ObservableObject, IDisposable
         _dispatcher = Dispatcher.CurrentDispatcher;
         _readonlyRecentItems = new ReadOnlyObservableCollection<RecentOptimisationViewModel>(_recentItems);
 
-        BrowseForFilesCommand = new RelayCommand(_ => BrowseForFiles());
+        BrowseForFilesCommand = new RelayCommand(_ => ShowBrowseDialog());
 
         _coordinator.RequestCompleted += OnRequestCompleted;
     }
@@ -45,22 +45,37 @@ public sealed class CompareViewModel : ObservableObject, IDisposable
 
     public ReadOnlyObservableCollection<RecentOptimisationViewModel> RecentItems => _readonlyRecentItems;
 
-    private void BrowseForFiles()
+    public void TriggerBrowseDialog()
     {
-        var dialog = new OpenFileDialog
-        {
-            Title = "Select files to optimise",
-            Multiselect = true,
-            Filter = "Supported media|*.png;*.jpg;*.jpeg;*.webp;*.avif;*.heic;*.bmp;*.gif;*.tiff;*.tif;*.mov;*.mp4;*.mkv;*.webm;*.pdf|All files|*.*"
-        };
+        ShowBrowseDialog();
+    }
 
-        var result = dialog.ShowDialog();
-        if (result != true)
+    private void ShowBrowseDialog()
+    {
+        try
         {
-            return;
+            var dialog = new OpenFileDialog
+            {
+                Title = "Select files to optimise",
+                Multiselect = true,
+                Filter = "Supported media|*.png;*.jpg;*.jpeg;*.webp;*.avif;*.heic;*.bmp;*.gif;*.tiff;*.tif;*.mov;*.mp4;*.mkv;*.webm;*.pdf|All files|*.*"
+            };
+
+            var result = dialog.ShowDialog();
+            if (result != true)
+            {
+                _logger.LogInformation("Browse dialog cancelled by user.");
+                return;
+            }
+
+            _logger.LogInformation("Browse dialog returned {FileCount} files", dialog.FileNames.Length);
+            EnqueuePaths(dialog.FileNames);
         }
-
-        EnqueuePaths(dialog.FileNames);
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Browse dialog failed");
+            throw;
+        }
     }
 
     private void EnqueuePaths(IEnumerable<string> paths)

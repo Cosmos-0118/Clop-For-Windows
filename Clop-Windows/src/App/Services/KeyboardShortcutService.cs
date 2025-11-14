@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
+using ClopWindows.App.Infrastructure;
 using ClopWindows.Core.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -23,14 +24,7 @@ public sealed class KeyboardShortcutService : IDisposable
     private Window? _window;
     private HwndSource? _source;
 
-    private enum ShortcutAction
-    {
-        ShowMainWindow,
-        ToggleFloatingResults,
-        ToggleClipboardWatcher
-    }
-
-    private sealed record HotkeyRegistration(int Id, ShortcutAction Action);
+    private sealed record HotkeyRegistration(int Id, GlobalShortcutAction Action);
 
     public KeyboardShortcutService(
         IServiceProvider serviceProvider,
@@ -40,6 +34,8 @@ public sealed class KeyboardShortcutService : IDisposable
         _serviceProvider = serviceProvider;
         _hudController = hudController;
         _logger = logger;
+        ShortcutCatalog.Initialize();
+        ShortcutCatalog.GlobalShortcutsChanged += OnGlobalShortcutsChanged;
     }
 
     public void Attach(Window window)
@@ -77,23 +73,29 @@ public sealed class KeyboardShortcutService : IDisposable
 
         _source.AddHook(WndProc);
 
-        RegisterHotKey(handle, ModifierKeys.Control | ModifierKeys.Shift, Key.Space, ShortcutAction.ShowMainWindow);
-        RegisterHotKey(handle, ModifierKeys.Control | ModifierKeys.Shift, Key.F, ShortcutAction.ToggleFloatingResults);
-        RegisterHotKey(handle, ModifierKeys.Control | ModifierKeys.Shift, Key.C, ShortcutAction.ToggleClipboardWatcher);
+        RebuildHotkeys(handle);
     }
 
-    private void RegisterHotKey(IntPtr handle, ModifierKeys modifiers, Key key, ShortcutAction action)
+    private void RegisterHotKey(IntPtr handle, GlobalShortcutBinding definition)
     {
         var id = ++_nextId;
-        var modifierFlags = ConvertModifiers(modifiers);
-        var virtualKey = (uint)KeyInterop.VirtualKeyFromKey(key);
+        var modifierFlags = ConvertModifiers(definition.Modifiers);
+        var virtualKey = (uint)KeyInterop.VirtualKeyFromKey(definition.Key);
         if (!NativeMethods.RegisterHotKey(handle, id, modifierFlags, virtualKey))
         {
-            _logger.LogWarning("Unable to register hotkey {Modifiers}+{Key}. Error {Error}", modifiers, key, Marshal.GetLastWin32Error());
+            _logger.LogWarning(
+                "Unable to register hotkey {Description} ({Gesture}). Error {Error}",
+                definition.Description,
+                ShortcutParser.ToDisplayString(definition.Modifiers, definition.Key),
+                Marshal.GetLastWin32Error());
             return;
         }
 
-        _registrations.Add(new HotkeyRegistration(id, action));
+        _registrations.Add(new HotkeyRegistration(id, definition.Action));
+        _logger.LogInformation(
+            "Registered hotkey {Description} as {Gesture}.",
+            definition.Description,
+            ShortcutParser.ToDisplayString(definition.Modifiers, definition.Key));
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -112,17 +114,17 @@ public sealed class KeyboardShortcutService : IDisposable
         return IntPtr.Zero;
     }
 
-    private void HandleAction(ShortcutAction action)
+    private void HandleAction(GlobalShortcutAction action)
     {
         switch (action)
         {
-            case ShortcutAction.ShowMainWindow:
+            case GlobalShortcutAction.ShowMainWindow:
                 Application.Current?.Dispatcher.BeginInvoke(new Action(BringMainWindowToFront));
                 break;
-            case ShortcutAction.ToggleFloatingResults:
+            case GlobalShortcutAction.ToggleFloatingResults:
                 Application.Current?.Dispatcher.BeginInvoke(new Action(ToggleFloatingResults));
                 break;
-            case ShortcutAction.ToggleClipboardWatcher:
+            case GlobalShortcutAction.ToggleClipboardWatcher:
                 Application.Current?.Dispatcher.BeginInvoke(new Action(ToggleClipboardWatcher));
                 break;
         }
@@ -218,6 +220,42 @@ public sealed class KeyboardShortcutService : IDisposable
         Dispose();
     }
 
+    private void RebuildHotkeys(IntPtr handle)
+    {
+        UnregisterHotkeys(handle);
+        _registrations.Clear();
+        _nextId = 0;
+
+        foreach (var shortcut in ShortcutCatalog.GetGlobalShortcuts())
+        {
+            RegisterHotKey(handle, shortcut);
+        }
+    }
+
+    private void OnGlobalShortcutsChanged(object? sender, EventArgs e)
+    {
+        if (_window is null)
+        {
+            return;
+        }
+
+        Application.Current?.Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (_window is null)
+            {
+                return;
+            }
+
+            var handle = new WindowInteropHelper(_window).Handle;
+            if (handle == IntPtr.Zero)
+            {
+                return;
+            }
+
+            RebuildHotkeys(handle);
+        }));
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -226,6 +264,8 @@ public sealed class KeyboardShortcutService : IDisposable
         }
 
         _disposed = true;
+
+        ShortcutCatalog.GlobalShortcutsChanged -= OnGlobalShortcutsChanged;
 
         if (_window is not null)
         {
@@ -238,23 +278,29 @@ public sealed class KeyboardShortcutService : IDisposable
             _source.RemoveHook(WndProc);
         }
 
+        var handle = _window is null ? IntPtr.Zero : new WindowInteropHelper(_window).Handle;
+        UnregisterHotkeys(handle);
+        _registrations.Clear();
+    }
+
+    private void UnregisterHotkeys(IntPtr handle)
+    {
+        if (handle == IntPtr.Zero)
+        {
+            return;
+        }
+
         try
         {
-            var handle = _window is null ? IntPtr.Zero : new WindowInteropHelper(_window).Handle;
-            if (handle != IntPtr.Zero)
+            foreach (var registration in _registrations)
             {
-                foreach (var registration in _registrations)
-                {
-                    NativeMethods.UnregisterHotKey(handle, registration.Id);
-                }
+                NativeMethods.UnregisterHotKey(handle, registration.Id);
             }
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "Error unregistering hotkeys.");
         }
-
-        _registrations.Clear();
     }
 
     private static class NativeMethods

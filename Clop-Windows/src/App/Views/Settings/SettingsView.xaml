@@ -51,6 +51,65 @@
                     <CheckBox Content="Strip metadata from optimised files" Margin="0,8,0,0" IsChecked="{Binding StripMetadata}"/>
                 </StackPanel>
             </Border>
+
+            <Border Margin="0,16,0,0" Padding="20" Background="#FFFFFF" BorderBrush="#EAECF0" BorderThickness="1" CornerRadius="12">
+                <StackPanel>
+                    <TextBlock Text="Keyboard shortcuts" FontSize="16" FontWeight="SemiBold" Foreground="#1D2939"/>
+                    <TextBlock Text="Customise Clop's navigation and global shortcuts." FontSize="13" Foreground="#475467" Margin="0,6,0,0"/>
+
+                    <TextBlock Text="In-app navigation" FontWeight="SemiBold" Foreground="#344054" Margin="0,18,0,0"/>
+                    <ItemsControl ItemsSource="{Binding AppShortcutPreferences}" Margin="0,10,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Padding="12" Margin="0,0,0,8" Background="#F8F9FC" BorderBrush="#E4E7EC" BorderThickness="1" CornerRadius="8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Description}" FontWeight="SemiBold" Foreground="#1D2939"/>
+                                            <TextBlock Text="{Binding DefaultBinding, StringFormat=Default: {0}}" Foreground="#667085" FontSize="12" Margin="0,4,0,0"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding CurrentBinding}" Foreground="#344054" VerticalAlignment="Center"/>
+                                            <Button Content="Change" Command="{Binding CaptureCommand}" Margin="12,0,0,0" Padding="14,4"/>
+                                            <Button Content="Clear" Command="{Binding ClearCommand}" Margin="8,0,0,0" Padding="12,4"/>
+                                            <Button Content="Reset" Command="{Binding ResetCommand}" Margin="8,0,0,0" Padding="12,4"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock Text="Global shortcuts" FontWeight="SemiBold" Foreground="#344054" Margin="0,18,0,0"/>
+                    <ItemsControl ItemsSource="{Binding GlobalShortcutPreferences}" Margin="0,10,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Padding="12" Margin="0,0,0,8" Background="#F8F9FC" BorderBrush="#E4E7EC" BorderThickness="1" CornerRadius="8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Description}" FontWeight="SemiBold" Foreground="#1D2939"/>
+                                            <TextBlock Text="{Binding DefaultBinding, StringFormat=Default: {0}}" Foreground="#667085" FontSize="12" Margin="0,4,0,0"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding CurrentBinding}" Foreground="#344054" VerticalAlignment="Center"/>
+                                            <Button Content="Change" Command="{Binding CaptureCommand}" Margin="12,0,0,0" Padding="14,4"/>
+                                            <Button Content="Clear" Command="{Binding ClearCommand}" Margin="8,0,0,0" Padding="12,4"/>
+                                            <Button Content="Reset" Command="{Binding ResetCommand}" Margin="8,0,0,0" Padding="12,4"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

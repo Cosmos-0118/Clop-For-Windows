@@ -91,6 +91,15 @@ public static class SettingsRegistry
     public static readonly SettingKey<bool> AutoCopyToClipboard = Bool("autoCopyToClipboard", true);
     public static readonly SettingKey<bool> CliInstalled = Bool("cliInstalled", true);
 
+    public static readonly SettingKey<string> ShortcutBrowseFiles = new("shortcutBrowseFiles", "Ctrl+O");
+    public static readonly SettingKey<string> ShortcutShowSettings = new("shortcutShowSettings", "Ctrl+OemComma");
+    public static readonly SettingKey<string> ShortcutShowOnboarding = new("shortcutShowOnboarding", "Ctrl+1");
+    public static readonly SettingKey<string> ShortcutShowCompare = new("shortcutShowCompare", "Ctrl+2");
+    public static readonly SettingKey<string> ShortcutShowSettingsNavigation = new("shortcutShowSettingsNavigation", "Ctrl+3");
+    public static readonly SettingKey<string> ShortcutShowMainWindow = new("shortcutShowMainWindow", "Ctrl+Shift+Space");
+    public static readonly SettingKey<string> ShortcutToggleFloatingResults = new("shortcutToggleFloatingResults", "Ctrl+Shift+F");
+    public static readonly SettingKey<string> ShortcutToggleClipboardOptimiser = new("shortcutToggleClipboardOptimiser", "Ctrl+Shift+C");
+
     public static readonly SettingKey<List<CropSize>> SavedCropSizes = new("savedCropSizes", DefaultCropSizes);
     public static readonly SettingKey<bool> PauseAutomaticOptimisations = Bool("pauseAutomaticOptimisations", false);
     public static readonly SettingKey<bool> SyncSettingsCloud = Bool("syncSettingsCloud", true);
@@ -164,6 +173,14 @@ public static class SettingsRegistry
         AutoClearCompactResultsAfter,
         AutoCopyToClipboard,
         CliInstalled,
+        ShortcutBrowseFiles,
+        ShortcutShowSettings,
+        ShortcutShowOnboarding,
+        ShortcutShowCompare,
+        ShortcutShowSettingsNavigation,
+        ShortcutShowMainWindow,
+        ShortcutToggleFloatingResults,
+        ShortcutToggleClipboardOptimiser,
         SavedCropSizes,
         PauseAutomaticOptimisations,
         SyncSettingsCloud,

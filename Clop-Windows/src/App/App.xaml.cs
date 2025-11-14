@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Windows;
+using ClopWindows.App.Infrastructure;
 using ClopWindows.App.Services;
 using ClopWindows.App.ViewModels;
 using ClopWindows.App.Views.FloatingHud;
 using ClopWindows.Core.Optimizers;
 using ClopWindows.Core.Settings;
+using ClopWindows.Core.Shared;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -15,17 +17,42 @@ namespace ClopWindows.App;
 public partial class App : Application
 {
     private IHost? _host;
+    private SimpleFileLoggerProvider? _fileLoggerProvider;
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         SettingsHost.EnsureInitialized();
+        ShortcutCatalog.Initialize();
+
+        var logDirectory = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Clop", "logs");
+        System.IO.Directory.CreateDirectory(logDirectory);
+        var logFilePath = System.IO.Path.Combine(logDirectory, $"app-{DateTime.UtcNow:yyyyMMdd}.log");
+        _fileLoggerProvider = new SimpleFileLoggerProvider(logFilePath);
+
+        SharedLogger.Sink = (level, message, context) =>
+        {
+            try
+            {
+                var contextText = context is null ? string.Empty : $" {context}";
+                var line = $"{DateTimeOffset.UtcNow:O} [{level}] Shared: {message}{contextText}";
+                _fileLoggerProvider?.WriteLine(line);
+            }
+            catch
+            {
+                // ignore logging failures
+            }
+        };
 
         _host = Host.CreateDefaultBuilder(e.Args)
             .ConfigureLogging(logging =>
             {
                 logging.SetMinimumLevel(LogLevel.Information);
                 logging.AddDebug();
+                if (_fileLoggerProvider is not null)
+                {
+                    logging.AddProvider(_fileLoggerProvider);
+                }
             })
             .ConfigureServices(services =>
             {
@@ -53,6 +80,9 @@ public partial class App : Application
 
         _host.Start();
 
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
+
         var hudController = _host.Services.GetRequiredService<FloatingHudController>();
         hudController.Initialize();
         hudController.Show();
@@ -63,6 +93,10 @@ public partial class App : Application
 
     protected override async void OnExit(ExitEventArgs e)
     {
+        DispatcherUnhandledException -= OnDispatcherUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException -= OnUnhandledException;
+        SharedLogger.Sink = null;
+
         if (_host is not null)
         {
             try
@@ -75,6 +109,19 @@ public partial class App : Application
             }
         }
 
+        _fileLoggerProvider?.Dispose();
+        _fileLoggerProvider = null;
+
         base.OnExit(e);
+    }
+
+    private void OnDispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
+    {
+        Log.Error("Unhandled dispatcher exception", e.Exception);
+    }
+
+    private void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
+    {
+        Log.Error("Unhandled exception", e.ExceptionObject);
     }
 }
