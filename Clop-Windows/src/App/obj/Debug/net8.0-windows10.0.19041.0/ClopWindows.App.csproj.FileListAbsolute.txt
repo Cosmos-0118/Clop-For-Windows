@@ -1,0 +1,1 @@
+C:\Users\user\Documents\Developer\Clop-main\Clop-Windows\src\App\obj\Debug\net8.0-windows10.0.19041.0\ClopWindows.App.csproj.AssemblyReference.cache

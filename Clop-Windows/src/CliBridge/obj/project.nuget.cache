@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "zx7OYhhY/RQ=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\user\\Documents\\Developer\\Clop-main\\Clop-Windows\\src\\CliBridge\\ClopWindows.CliBridge.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\user\\.nuget\\packages\\microsoft.win32.systemevents\\8.0.0\\microsoft.win32.systemevents.8.0.0.nupkg.sha512",
+    "C:\\Users\\user\\.nuget\\packages\\system.drawing.common\\8.0.6\\system.drawing.common.8.0.6.nupkg.sha512"
+  ],
+  "logs": []
+}
