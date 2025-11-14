@@ -474,9 +474,7 @@ internal sealed class ExternalVideoToolchain : IVideoToolchain
 
     public async Task<ToolchainResult> TranscodeAsync(VideoOptimiserPlan plan, FilePath tempOutput, OptimiserExecutionContext context, CancellationToken cancellationToken)
     {
-        var args = BuildTranscodeArguments(plan, tempOutput);
-        var tracker = new FfmpegProgressTracker("Encoding");
-        return await RunProcessAsync(_options.FfmpegPath, args, context, cancellationToken, line => tracker.Process(line, context)).ConfigureAwait(false);
+        return await RunTranscodeAsync(plan, tempOutput, context, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<ToolchainResult> ConvertToGifAsync(VideoOptimiserPlan plan, FilePath tempOutput, OptimiserExecutionContext context, CancellationToken cancellationToken)
@@ -511,7 +509,43 @@ internal sealed class ExternalVideoToolchain : IVideoToolchain
         }
     }
 
-    private IReadOnlyList<string> BuildTranscodeArguments(VideoOptimiserPlan plan, FilePath output)
+    private async Task<ToolchainResult> RunTranscodeAsync(VideoOptimiserPlan plan, FilePath tempOutput, OptimiserExecutionContext context, CancellationToken cancellationToken)
+    {
+        var tracker = new FfmpegProgressTracker("Encoding");
+        var args = BuildTranscodeArguments(plan, tempOutput, plan.UseHardwareAcceleration);
+        var result = await RunProcessAsync(_options.FfmpegPath, args, context, cancellationToken, line => tracker.Process(line, context)).ConfigureAwait(false);
+
+        if (result.Success || !plan.UseHardwareAcceleration)
+        {
+            return result;
+        }
+
+        Log.Info("Hardware video encoder failed; falling back to software encoder.");
+        context.ReportProgress(5, "Switching to software encoder");
+
+        SafeDelete(tempOutput);
+
+        var softwarePlan = plan with { UseHardwareAcceleration = false };
+        var softwareArgs = BuildTranscodeArguments(softwarePlan, tempOutput, useHardwareAcceleration: false);
+        return await RunProcessAsync(_options.FfmpegPath, softwareArgs, context, cancellationToken, line => tracker.Process(line, context)).ConfigureAwait(false);
+    }
+
+    private static void SafeDelete(FilePath path)
+    {
+        try
+        {
+            if (File.Exists(path.Value))
+            {
+                File.Delete(path.Value);
+            }
+        }
+        catch
+        {
+            // best effort cleanup
+        }
+    }
+
+    private IReadOnlyList<string> BuildTranscodeArguments(VideoOptimiserPlan plan, FilePath output, bool useHardwareAcceleration)
     {
         var args = new List<string>
         {
@@ -525,7 +559,7 @@ internal sealed class ExternalVideoToolchain : IVideoToolchain
             args.Add(string.Join(',', plan.Filters));
         }
 
-        args.AddRange(BuildCodecArguments(plan));
+        args.AddRange(BuildCodecArguments(plan, useHardwareAcceleration));
 
         if (plan.RemoveAudio)
         {
@@ -540,9 +574,9 @@ internal sealed class ExternalVideoToolchain : IVideoToolchain
         return args;
     }
 
-    private IReadOnlyList<string> BuildCodecArguments(VideoOptimiserPlan plan)
+    private IReadOnlyList<string> BuildCodecArguments(VideoOptimiserPlan plan, bool useHardwareAcceleration)
     {
-        if (plan.UseHardwareAcceleration)
+        if (useHardwareAcceleration)
         {
             return new[]
             {
@@ -559,7 +593,8 @@ internal sealed class ExternalVideoToolchain : IVideoToolchain
         {
             "-c:v", _options.SoftwareEncoder,
             "-preset", preset,
-            "-crf", crf.ToInvariantString()
+            "-crf", crf.ToInvariantString(),
+            "-pix_fmt", "yuv420p"
         };
     }
 
