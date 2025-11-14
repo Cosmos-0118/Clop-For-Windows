@@ -71,7 +71,11 @@ Clop-Windows/
 - [x] **P2.3 – Video pipeline**: Mirror `Video.swift` features: ffmpeg progress scraping, FPS caps, Media Engine hardware acceleration (map to Windows Video Acceleration), GIF export via `gifski`. Provide regression tests using sample MOV/MP4 assets.
   - Added `Core/Optimizers/VideoOptimiser.cs` with a configurable `VideoOptimiserOptions` surface, public `IVideoToolchain` contract, ffmpeg progress parsing, GIF export via gifski, and timestamp preservation. Hardware-accelerated encodes default to `d3d11va`/`h264_amf` with software fallback and filter support for resizing, playback-speed changes, and audio stripping.
   - Created `VideoOptimiserTests` with a fake toolchain to verify fps caps, metadata overrides, and GIF conversion semantics, ensuring the coordinator can process MOV/MP4-style inputs without requiring the real binaries during CI.
-- [ ] **P2.4 – PDF pipeline**: Reproduce `PDF.swift` Ghostscript command set, progress parsing, and metadata stripping toggles. Document Ghostscript licensing requirements in `docs/windows-deps.md`.
+- [x] **P2.4 – PDF pipeline**: Reproduce `PDF.swift` Ghostscript command set, progress parsing, and metadata stripping toggles. Document Ghostscript licensing requirements in `docs/windows-deps.md`.
+  - Added `Core/Optimizers/PdfOptimiser.cs` plus injectable `IPdfToolchain` so the coordinator can shell out to Ghostscript with the same lossy/lossless stacks, metadata stripping hooks, and timestamp preservation as macOS.
+  - Introduced `PdfOptimiserOptions` for configuring Ghostscript paths, font search directories, and size/metadata policies, with sane defaults sourced from `%LOCALAPPDATA%` + bundled binaries.
+  - Created `Core.Tests/PdfOptimiserTests.cs` using a fake toolchain to cover success paths, metadata overrides, and invalid PDF handling without requiring the real binary.
+  - Expanded `docs/windows-deps.md` with explicit Ghostscript licensing guidance (AGPL vs commercial Artifex license) so release engineering can choose a compliant distribution path.
 - [ ] **P2.5 – CLI parity**: Build `CliBridge` commands analogous to macOS CLI (optimize clipboard, files, directories, automation hooks). Ensure command names/flags match for portability.
 
 ### Phase 3 – Background Agents & Automation

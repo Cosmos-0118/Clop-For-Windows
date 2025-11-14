@@ -63,3 +63,9 @@ where midlrt.exe
 | `cwebp`                   | `cwebp -mt -q 60 -sharp_yuv -metadata all input -o out.webp` (`Images.swift` 860–920).                                                                                                          | Use Google's official `libwebp` Windows build, copy `cwebp.exe` + DLLs into `tools/libwebp/`, and keep metadata flags enabled.                                                                | BSD-style (libwebp). Include NOTICE file; no copyleft obligations.                                                                                                                                                    |
 
 **Distribution plan**: place each binary (and dependent DLLs) inside `Clop-Windows/tools/<binary>/` during source control, then copy/extract to `%LOCALAPPDATA%\Clop\bin\{arch}` on first launch (mirrors macOS' `GLOBAL_BIN_DIR`). Keep SHA256 hashes beside each binary and validate before execution. For GPL/AGPL items, document the license in `LICENSE` and add download-source links in `docs/windows-deps.md` so legal can approve redistribution or acquire commercial licenses.
+
+### Ghostscript licensing requirements
+
+- Ghostscript's AGPL requires that any distribution which statically links or bundles the binary must provide complete corresponding source for Clop Windows and any modifications to Ghostscript itself. If we keep Clop Windows proprietary, we must instead purchase an Artifex commercial license.
+- Regardless of the path chosen, ship the official Artifex LICENSE + NOTICE files in the installer, and display the attribution inside the Settings → About panel.
+- When using the commercial license, lock builds to the licensed version (e.g., 10.05.x) and track the proof-of-purchase in the release checklist so CI artifacts remain compliant.
