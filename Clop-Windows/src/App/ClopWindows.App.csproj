@@ -10,6 +10,7 @@
     <RootNamespace>ClopWindows.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>ClopWindows</AssemblyName>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
 
   <ItemGroup>
