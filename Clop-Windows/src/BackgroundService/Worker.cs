@@ -9,13 +9,15 @@ public class Worker : Microsoft.Extensions.Hosting.BackgroundService
     private readonly ClipboardOptimisationService _clipboardService;
     private readonly DirectoryOptimisationService _directoryService;
     private readonly ShortcutsBridge _shortcutsBridge;
+    private readonly CrossAppAutomationHost _crossAppHost;
     private readonly ILogger<Worker> _logger;
 
-    public Worker(ClipboardOptimisationService clipboardService, DirectoryOptimisationService directoryService, ShortcutsBridge shortcutsBridge, ILogger<Worker> logger)
+    public Worker(ClipboardOptimisationService clipboardService, DirectoryOptimisationService directoryService, ShortcutsBridge shortcutsBridge, CrossAppAutomationHost crossAppHost, ILogger<Worker> logger)
     {
         _clipboardService = clipboardService;
         _directoryService = directoryService;
         _shortcutsBridge = shortcutsBridge;
+        _crossAppHost = crossAppHost;
         _logger = logger;
     }
 
@@ -25,7 +27,8 @@ public class Worker : Microsoft.Extensions.Hosting.BackgroundService
         await Task.WhenAll(
             _clipboardService.RunAsync(stoppingToken),
             _directoryService.RunAsync(stoppingToken),
-            _shortcutsBridge.RunAsync(stoppingToken));
+            _shortcutsBridge.RunAsync(stoppingToken),
+            _crossAppHost.RunAsync(stoppingToken));
         _logger.LogInformation("Background automation services stopped.");
     }
 }

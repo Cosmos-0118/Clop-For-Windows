@@ -121,19 +121,15 @@ Clop-Windows/
 - [x] **P10.4 – Audio pipeline parity**: Support AAC/Opus re-encode, loudness normalisation, and channel down-mix options surfaced in the UI, matching macOS advanced toggles.
 - [x] **P10.5 – GIF modernisation**: Replace the manual png frame staging with gifski library bindings or libimagequant to reduce artefacts, and offer APNG/WebP animated exports when quality thresholds demand it.
 
-### Phase 11 – PDF & Document Workflow
-
-- [x] **P11.1 – Hybrid optimiser stack**: Combine Ghostscript with qpdf + Tesseract to handle scanned documents, enabling deskew, background cleanup, and text layer regeneration analogous to macOS `PDF.swift` aggressive presets.
-- [x] **P11.2 – Segmentation-driven compression**: Introduce content-aware segmentation (text vs images) so image-heavy PDFs route to libvips/mozjpeg while text blocks stay lossless. Store segmentation maps alongside results for compare view overlays.
-- [x] **P11.3 – Incremental optimisation**: Detect already optimised PDFs (via custom ADS metadata) and skip heavy re-execution, offering delta-compress flows when only metadata changes.
-- [x] **P11.4 – Accessibility metadata**: Align with macOS by injecting tagged PDF metadata (title, language, reading order) and validating output with PAC3/Adobe Preflight scripts.
-
 ### Phase 12 – Automation, Watchers, and Batch Intelligence
 
-- [ ] **P12.1 – Heuristic queueing**: Enhance `BackgroundService` watchers to batch similar files, schedule large encodes during system idle, and prioritise quick wins for better perceived speed.
-- [ ] **P12.2 – Cross-app integrations**: Ship native hooks for Microsoft Power Automate, Share targets, and Teams adaptive cards mirroring macOS Shortcuts depth. Include sample flows in `docs/automation-samples.md`.
+- [x] **P12.1 – Heuristic queueing**: Enhance `BackgroundService` watchers to batch similar files, schedule large encodes during system idle, and prioritise quick wins for better perceived speed.
+  - Added `HeuristicScheduler` and idle-aware batching inside `DirectoryOptimisationService`, mirroring macOS queue scoring and last-input heuristics.
+- [x] **P12.2 – Cross-app integrations**: Ship native hooks for Microsoft Power Automate, Share targets, and Teams adaptive cards mirroring macOS Shortcuts depth. Include sample flows in `docs/automation-samples.md`.
+  - Introduced `CrossAppAutomationHost` HTTP listener with bearer token auth plus Power Automate, Share, and Teams adaptive-card endpoints.
 - [ ] **P12.3 – Smart redo suggestions**: Analyse optimisation outcomes and, when savings are minimal, offer alternative presets or remind users to try AVIF/AGGRESSIVE in HUD tooltips.
-- [ ] **P12.4 – CLI power-user features**: Add watch mode (`clop watch`), JSON schema export, and shell completion scripts. Mirror macOS CLI flags and document them in `docs/cli.md`.
+- [x] **P12.4 – CLI power-user features**: Add watch mode (`clop watch`), JSON schema export, and shell completion scripts. Mirror macOS CLI flags and document them in `docs/cli.md`.
+  - Implemented `clop watch` with debounce + JSON streaming and added a schema export command for tooling integrations.
 
 ### Phase 13 – UI Modernisation & Theming
 

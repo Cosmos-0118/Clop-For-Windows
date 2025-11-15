@@ -23,6 +23,7 @@ builder.Services.AddSingleton<ClipboardMonitor>();
 builder.Services.AddSingleton<ClipboardOptimisationService>();
 builder.Services.AddSingleton<DirectoryOptimisationService>();
 builder.Services.AddSingleton<ShortcutsBridge>();
+builder.Services.AddSingleton<CrossAppAutomationHost>();
 builder.Services.AddHostedService<Worker>();
 
 var host = builder.Build();

@@ -23,6 +23,8 @@ internal static class Program
         var root = new RootCommand("Clop for Windows CLI");
         root.Name = "clop";
         root.AddCommand(OptimiseCommandBuilder.Create());
+        root.AddCommand(WatchCommandBuilder.Create());
+        root.AddCommand(SchemaCommandBuilder.Create(root));
         return await root.InvokeAsync(args).ConfigureAwait(false);
     }
 }

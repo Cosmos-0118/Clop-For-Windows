@@ -91,6 +91,10 @@ public static class SettingsRegistry
 
     public static readonly SettingKey<bool> AutoCopyToClipboard = Bool("autoCopyToClipboard", true);
     public static readonly SettingKey<bool> CliInstalled = Bool("cliInstalled", true);
+    public static readonly SettingKey<bool> EnableCrossAppAutomation = Bool("enableCrossAppAutomation", true);
+    public static readonly SettingKey<int> AutomationHttpPort = Int("automationHttpPort", 58732);
+    public static readonly SettingKey<string> AutomationAccessToken = new("automationAccessToken", string.Empty);
+    public static readonly SettingKey<bool> EnableTeamsAdaptiveCards = Bool("enableTeamsAdaptiveCards", true);
 
     public static readonly SettingKey<string> ShortcutBrowseFiles = new("shortcutBrowseFiles", "Ctrl+O");
     public static readonly SettingKey<string> ShortcutShowSettings = new("shortcutShowSettings", "Ctrl+OemComma");
@@ -175,6 +179,10 @@ public static class SettingsRegistry
         AutoClearCompactResultsAfter,
         AutoCopyToClipboard,
         CliInstalled,
+        EnableCrossAppAutomation,
+        AutomationHttpPort,
+        AutomationAccessToken,
+        EnableTeamsAdaptiveCards,
         ShortcutBrowseFiles,
         ShortcutShowSettings,
         ShortcutShowOnboarding,

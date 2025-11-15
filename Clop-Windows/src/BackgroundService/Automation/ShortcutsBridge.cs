@@ -1,7 +1,13 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
 using System.IO.Pipes;
+using System.Linq;
 using System.Runtime.Versioning;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using ClopWindows.Core.Optimizers;
 using ClopWindows.Core.Settings;
 using ClopWindows.Core.Shared;
@@ -217,7 +223,7 @@ public sealed class ShortcutsBridge : IAsyncDisposable
             return AutomationResponse.Error("invalid_payload", "At least one path is required.");
         }
 
-        var targets = ResolveTargets(payload);
+        var targets = AutomationTargetResolver.ResolveTargets(payload, _logger);
         if (targets.Count == 0)
         {
             return AutomationResponse.Error("not_found", "No optimisable files were located for the supplied paths.");
@@ -296,147 +302,6 @@ public sealed class ShortcutsBridge : IAsyncDisposable
 
         var outcome = failures == 0 ? "ok" : failures == tickets.Count ? "failed" : "partial";
         return AutomationResponse.Success(status: outcome, data: new { results });
-    }
-
-    private IReadOnlyList<AutomationTarget> ResolveTargets(AutomationOptimisePayload payload)
-    {
-        var results = new List<AutomationTarget>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var filter = new TypeFilter(payload.IncludeTypes, payload.ExcludeTypes);
-
-        foreach (var path in payload.Paths)
-        {
-            if (string.IsNullOrWhiteSpace(path))
-            {
-                continue;
-            }
-
-            var expanded = ExpandPath(path);
-            if (string.IsNullOrWhiteSpace(expanded))
-            {
-                continue;
-            }
-
-            if (Directory.Exists(expanded))
-            {
-                var enumerationOptions = new EnumerationOptions
-                {
-                    RecurseSubdirectories = payload.Recursive,
-                    IgnoreInaccessible = true,
-                    MatchCasing = MatchCasing.CaseInsensitive
-                };
-
-                foreach (var file in Directory.EnumerateFiles(expanded, "*", enumerationOptions))
-                {
-                    AddCandidate(file);
-                }
-            }
-            else if (File.Exists(expanded))
-            {
-                AddCandidate(expanded);
-            }
-            else
-            {
-                _logger.LogDebug("Automation request skipped missing item '{Item}'.", path);
-            }
-        }
-
-        return results;
-
-        void AddCandidate(string candidate)
-        {
-            if (!seen.Add(candidate))
-            {
-                return;
-            }
-
-            AutomationTarget? target = null;
-            try
-            {
-                var filePath = FilePath.From(candidate);
-                if (IsWithinWorkRoot(filePath))
-                {
-                    return;
-                }
-
-                var extension = filePath.Extension;
-                if (!filter.Allows(extension))
-                {
-                    return;
-                }
-
-                ItemType? type = DetermineItemType(filePath);
-                if (type is null)
-                {
-                    return;
-                }
-
-                target = new AutomationTarget(filePath, type.Value);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "Failed to process automation candidate {Candidate}.", candidate);
-            }
-
-            if (target is not null)
-            {
-                results.Add(target.Value);
-            }
-        }
-    }
-
-    private static ItemType? DetermineItemType(FilePath path)
-    {
-        if (MediaFormats.IsImage(path))
-        {
-            return ItemType.Image;
-        }
-
-        if (MediaFormats.IsVideo(path))
-        {
-            return ItemType.Video;
-        }
-
-        if (MediaFormats.IsPdf(path))
-        {
-            return ItemType.Pdf;
-        }
-
-        return null;
-    }
-
-    private static string ExpandPath(string input)
-    {
-        var value = input.Trim().Trim('"');
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return value;
-        }
-
-        value = Environment.ExpandEnvironmentVariables(value);
-        if (value.StartsWith("~" + Path.DirectorySeparatorChar, StringComparison.Ordinal))
-        {
-            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            value = Path.Combine(home, value[2..]);
-        }
-
-        return Path.GetFullPath(value);
-    }
-
-    private static bool IsWithinWorkRoot(FilePath path)
-    {
-        var workRoot = ClopPaths.WorkRoot.Value;
-        if (path.Value.Equals(workRoot, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        if (!Path.EndsInDirectorySeparator(workRoot))
-        {
-            workRoot += Path.DirectorySeparatorChar;
-        }
-
-        return path.Value.StartsWith(workRoot, StringComparison.OrdinalIgnoreCase);
     }
 
     private Task<AutomationResponse> HandlePauseResumeAsync(bool paused)
@@ -535,8 +400,6 @@ public sealed class ShortcutsBridge : IAsyncDisposable
             PipeOptions.Asynchronous | PipeOptions.WriteThrough);
     }
 
-    private readonly record struct AutomationTarget(FilePath Path, ItemType Type);
-
     private readonly record struct AutomationOptimiseResult(string RequestId, string SourcePath, string? OutputPath, string Status, string? Message);
 
     private sealed record AutomationEnvelope
@@ -545,17 +408,6 @@ public sealed class ShortcutsBridge : IAsyncDisposable
         public string? RequestId { get; init; }
         public bool KeepAlive { get; init; }
         public JsonElement? Payload { get; init; }
-    }
-
-    private sealed record AutomationOptimisePayload
-    {
-        public List<string> Paths { get; init; } = new();
-        public bool Recursive { get; init; }
-        public bool Aggressive { get; init; }
-        public bool RemoveAudio { get; init; }
-        public double? PlaybackSpeedFactor { get; init; }
-        public List<string> IncludeTypes { get; init; } = new();
-        public List<string> ExcludeTypes { get; init; } = new();
     }
 
     private sealed record AutomationResponse
@@ -572,109 +424,6 @@ public sealed class ShortcutsBridge : IAsyncDisposable
     }
 
     private sealed record ShortcutDescriptor(string Identifier, string Title, string Description, string Category);
-
-    private sealed class TypeFilter
-    {
-        private readonly HashSet<string>? _allowed;
-        private readonly HashSet<string> _excluded;
-
-        public TypeFilter(IEnumerable<string> include, IEnumerable<string> exclude)
-        {
-            _allowed = BuildSet(include);
-            _excluded = BuildSet(exclude) ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        }
-
-        public bool Allows(string? extension)
-        {
-            if (string.IsNullOrWhiteSpace(extension))
-            {
-                return false;
-            }
-
-            extension = extension.TrimStart('.');
-            if (_excluded.Contains(extension))
-            {
-                return false;
-            }
-
-            if (_allowed is null)
-            {
-                return true;
-            }
-
-            return _allowed.Contains(extension);
-        }
-
-        private static HashSet<string>? BuildSet(IEnumerable<string> values)
-        {
-            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var value in values)
-            {
-                if (string.IsNullOrWhiteSpace(value))
-                {
-                    continue;
-                }
-
-                var token = value.Trim();
-                if (token.Contains(',', StringComparison.Ordinal))
-                {
-                    foreach (var part in token.Split(',', StringSplitOptions.RemoveEmptyEntries))
-                    {
-                        var expanded = ResolveToken(part);
-                        foreach (var item in expanded)
-                        {
-                            set.Add(item);
-                        }
-                    }
-                    continue;
-                }
-
-                var entries = ResolveToken(token);
-                foreach (var entry in entries)
-                {
-                    set.Add(entry);
-                }
-            }
-
-            return set.Count == 0 ? null : set;
-        }
-
-        private static IEnumerable<string> ResolveToken(string token)
-        {
-            if (string.IsNullOrWhiteSpace(token))
-            {
-                yield break;
-            }
-
-            token = token.Trim().TrimStart('.');
-            switch (token.ToLowerInvariant())
-            {
-                case "image":
-                case "images":
-                    foreach (var ext in MediaFormats.ImageExtensionNames)
-                    {
-                        yield return ext;
-                    }
-                    yield break;
-                case "video":
-                case "videos":
-                    foreach (var ext in MediaFormats.VideoExtensionNames)
-                    {
-                        yield return ext;
-                    }
-                    yield break;
-                case "pdf":
-                case "pdfs":
-                    foreach (var ext in MediaFormats.PdfExtensionNames)
-                    {
-                        yield return ext;
-                    }
-                    yield break;
-            }
-
-            yield return token;
-        }
-    }
 
     private static class AutomationIntents
     {

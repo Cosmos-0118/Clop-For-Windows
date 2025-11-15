@@ -194,15 +194,13 @@ public sealed class ClipboardOptimisationService : IAsyncDisposable
 
         try
         {
-            if (context.Item.IsTemporary)
-            {
-                TryDeleteFile(context.Item.SourcePath);
-            }
+            var sourcePath = context.Item.SourcePath;
+            var finalPath = sourcePath;
 
             if (result.Status == OptimisationStatus.Succeeded)
             {
-                var output = result.OutputPath ?? context.Item.SourcePath;
-                var finalPath = output;
+                var output = result.OutputPath ?? sourcePath;
+                finalPath = output;
 
                 if (context.Item.IsImage && context.Item.Origin == ClipboardOrigin.Bitmap && _copyImageFilePath && _useCustomTemplate)
                 {
@@ -220,6 +218,11 @@ public sealed class ClipboardOptimisationService : IAsyncDisposable
                         await CopyFileToClipboardAsync(finalPath).ConfigureAwait(false);
                     }
                 }
+
+                if (context.Item.IsTemporary && !PathsEqual(sourcePath, finalPath))
+                {
+                    TryDeleteFile(sourcePath);
+                }
             }
             else
             {
@@ -230,6 +233,11 @@ public sealed class ClipboardOptimisationService : IAsyncDisposable
                 else
                 {
                     _logger.LogWarning("Clipboard optimisation {RequestId} finished with status {Status}", result.RequestId, result.Status);
+                }
+
+                if (context.Item.IsTemporary)
+                {
+                    TryDeleteFile(sourcePath);
                 }
             }
         }
@@ -589,6 +597,8 @@ public sealed class ClipboardOptimisationService : IAsyncDisposable
             // Best effort cleanup
         }
     }
+
+    private static bool PathsEqual(FilePath left, FilePath right) => string.Equals(left.Value, right.Value, StringComparison.OrdinalIgnoreCase);
 
     private void OnSettingChanged(object? sender, SettingChangedEventArgs e)
     {

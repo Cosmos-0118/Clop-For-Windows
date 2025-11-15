@@ -74,6 +74,7 @@ public partial class App : System.Windows.Application
                 services.AddSingleton<ClipboardOptimisationService>();
                 services.AddSingleton<DirectoryOptimisationService>();
                 services.AddSingleton<ShortcutsBridge>();
+                services.AddSingleton<CrossAppAutomationHost>();
                 services.AddHostedService<Worker>();
 
                 services.AddSingleton<FloatingHudViewModel>();
