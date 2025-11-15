@@ -20,7 +20,6 @@ public sealed class FloatingResultViewModel : ObservableObject
     private string _displayName = string.Empty;
     private string? _subtitle;
     private string _statusText = "Queued";
-    private string? _sizeSummary;
     private double _progress;
     private bool _isRunning = true;
     private bool _isSuccess;
@@ -65,12 +64,6 @@ public sealed class FloatingResultViewModel : ObservableObject
     {
         get => _statusText;
         private set => SetProperty(ref _statusText, value);
-    }
-
-    public string? SizeSummary
-    {
-        get => _sizeSummary;
-        private set => SetProperty(ref _sizeSummary, value);
     }
 
     public double Progress
@@ -123,7 +116,6 @@ public sealed class FloatingResultViewModel : ObservableObject
         IsRunning = true;
         IsSuccess = false;
         IsFailure = false;
-        SizeSummary = null;
     }
 
     public void UpdateProgress(OptimisationProgress progress)
@@ -161,40 +153,51 @@ public sealed class FloatingResultViewModel : ObservableObject
             _ => result.Message ?? "Finished"
         };
 
-        if (IsSuccess)
+        var summary = IsSuccess ? BuildSizeSummary(_outputPath, _originalBytes) : null;
+
+        if (!string.IsNullOrWhiteSpace(result.Message))
         {
-            UpdateSizeSummary(_outputPath);
+            StatusText = result.Message;
+        }
+        else if (!string.IsNullOrWhiteSpace(summary))
+        {
+            StatusText = summary;
         }
         else
         {
-            SizeSummary = null;
+            StatusText = result.Status switch
+            {
+                OptimisationStatus.Succeeded => "Optimised",
+                OptimisationStatus.Unsupported => "Unsupported",
+                OptimisationStatus.Cancelled => "Cancelled",
+                OptimisationStatus.Failed => "Failed",
+                _ => "Finished"
+            };
         }
     }
 
-    private void UpdateSizeSummary(FilePath? outputPath)
+    private static string? BuildSizeSummary(FilePath? outputPath, long? originalBytes)
     {
-        if (_originalBytes is null || outputPath is null)
+        if (originalBytes is null || outputPath is null)
         {
-            SizeSummary = null;
-            return;
+            return null;
         }
 
         var optimisedBytes = TryGetLength(outputPath.Value);
         if (optimisedBytes is null)
         {
-            SizeSummary = null;
-            return;
+            return null;
         }
 
-        var delta = _originalBytes.Value - optimisedBytes.Value;
+        var delta = originalBytes.Value - optimisedBytes.Value;
         var magnitude = Math.Abs(delta);
         var total = optimisedBytes.Value;
         var changeAmount = magnitude.HumanSize();
-        var original = _originalBytes.Value.HumanSize();
+        var original = originalBytes.Value.HumanSize();
         var final = total.HumanSize();
-        var percentage = _originalBytes.Value == 0 ? 0 : (double)delta / _originalBytes.Value * 100d;
+        var percentage = originalBytes.Value == 0 ? 0 : (double)delta / originalBytes.Value * 100d;
         var direction = delta >= 0 ? "Saved" : "Added";
-        SizeSummary = string.Format(CultureInfo.CurrentCulture, "{0} {1} ({2} → {3}, {4:+0.##;-0.##;0}%)", direction, changeAmount, original, final, percentage);
+        return string.Format(CultureInfo.CurrentCulture, "{0} {1} ({2} → {3}, {4:+0.##;-0.##;0}%)", direction, changeAmount, original, final, percentage);
     }
 
     private static string ExtractSourceTag(IReadOnlyDictionary<string, object?> metadata)

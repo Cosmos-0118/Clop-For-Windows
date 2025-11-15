@@ -1,8 +1,11 @@
 using System;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
+using ClopWindows.App.ViewModels;
 
 namespace ClopWindows.App.Views.FloatingHud;
 
@@ -113,6 +116,40 @@ public partial class FloatingHudWindow : Window
     public void ExitPlacementMode()
     {
         IsPlacementMode = false;
+    }
+
+    public bool TryAnimateDismissal(FloatingResultViewModel viewModel, Action onCompleted)
+    {
+        if (viewModel is null)
+        {
+            return false;
+        }
+
+        if (ResultsItemsControl.ItemContainerGenerator.ContainerFromItem(viewModel) is not ContentPresenter presenter)
+        {
+            return false;
+        }
+
+        if (presenter.ContentTemplate?.FindName("ResultCard", presenter) is not FrameworkElement card)
+        {
+            return false;
+        }
+
+        var animation = new DoubleAnimation
+        {
+            To = 0,
+            Duration = TimeSpan.FromMilliseconds(220),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+        };
+
+        animation.Completed += (_, _) =>
+        {
+            card.Opacity = 1;
+            onCompleted();
+        };
+
+        card.BeginAnimation(OpacityProperty, animation);
+        return true;
     }
 
     private void OnHudMouseDown(object sender, MouseButtonEventArgs e)

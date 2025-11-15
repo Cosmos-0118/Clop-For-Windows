@@ -22,6 +22,9 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
   </ItemGroup>
+    <ItemGroup>
+      <Resource Include="Assets\Brand\Assets.xcassets\**\*.png" />
+    </ItemGroup>
 
   <ItemGroup>
     <Manifest Include="$(ApplicationManifest)" />

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Threading;
 using ClopWindows.App.ViewModels;
 using ClopWindows.App.Views.FloatingHud;
@@ -20,7 +22,8 @@ public sealed class FloatingHudController : IDisposable
     private readonly ILogger<FloatingHudController> _logger;
     private readonly Dictionary<string, FloatingResultViewModel> _results = new(StringComparer.Ordinal);
     private readonly Dictionary<string, OptimisationRequest> _requests = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, DispatcherTimer> _dismissTimers = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, CancellationTokenSource> _dismissDelays = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _pendingDismissals = new(StringComparer.Ordinal);
 
     private bool _isInitialized;
     private bool _isDisposed;
@@ -60,14 +63,14 @@ public sealed class FloatingHudController : IDisposable
             RegisterRequest(request);
         }
 
-        EnsureVisible();
+        EnsureVisible(forceShow: true);
         ApplyAutoHideSettings();
     }
 
     public void Show()
     {
         ThrowIfDisposed();
-        EnsureVisible();
+        EnsureVisible(forceShow: true);
     }
 
     public void Hide()
@@ -287,12 +290,39 @@ public sealed class FloatingHudController : IDisposable
 
     private void DismissResult(FloatingResultViewModel viewModel)
     {
-        Dispatch(() => RemoveResult(viewModel));
+        Dispatch(() => BeginDismissal(viewModel));
+    }
+
+    private void BeginDismissal(FloatingResultViewModel viewModel, bool animate = true)
+    {
+        if (!animate)
+        {
+            RemoveResult(viewModel);
+            return;
+        }
+
+        if (!_pendingDismissals.Add(viewModel.RequestId))
+        {
+            return;
+        }
+
+        var animated = _window.TryAnimateDismissal(viewModel, () =>
+        {
+            _pendingDismissals.Remove(viewModel.RequestId);
+            RemoveResult(viewModel);
+        });
+
+        if (!animated)
+        {
+            _pendingDismissals.Remove(viewModel.RequestId);
+            RemoveResult(viewModel);
+        }
     }
 
     private void RemoveResult(FloatingResultViewModel viewModel)
     {
         CancelDismissTimer(viewModel.RequestId);
+        _pendingDismissals.Remove(viewModel.RequestId);
 
         if (!_results.Remove(viewModel.RequestId))
         {
@@ -318,7 +348,7 @@ public sealed class FloatingHudController : IDisposable
         while (_viewModel.Results.Count > MaxVisibleResults)
         {
             var overflow = _viewModel.Results[^1];
-            RemoveResult(overflow);
+            BeginDismissal(overflow, animate: false);
         }
     }
 
@@ -333,9 +363,9 @@ public sealed class FloatingHudController : IDisposable
                 {
                     _window.Hide();
                 }
-                else if (_viewModel.HasResults)
+                else
                 {
-                    EnsureVisible();
+                    EnsureVisible(forceShow: true);
                 }
             });
 
@@ -361,12 +391,13 @@ public sealed class FloatingHudController : IDisposable
     {
         if (!SettingsHost.Get(SettingsRegistry.AutoHideFloatingResults))
         {
-            foreach (var timer in _dismissTimers.Values)
+            foreach (var delay in _dismissDelays.Values)
             {
-                timer.Stop();
+                delay.Cancel();
+                delay.Dispose();
             }
 
-            _dismissTimers.Clear();
+            _dismissDelays.Clear();
             return;
         }
 
@@ -400,25 +431,41 @@ public sealed class FloatingHudController : IDisposable
         }
 
         var clampedSeconds = Math.Clamp(seconds, 1, 600);
-        var timer = new DispatcherTimer(TimeSpan.FromSeconds(clampedSeconds), DispatcherPriority.Background, null, _window.Dispatcher);
-        EventHandler? handler = null;
-        handler = (_, _) =>
+        var cts = new CancellationTokenSource();
+        _dismissDelays[viewModel.RequestId] = cts;
+
+        _ = Task.Run(async () =>
         {
-            timer.Tick -= handler;
-            timer.Stop();
-            _dismissTimers.Remove(viewModel.RequestId);
-            RemoveResult(viewModel);
-        };
-        timer.Tick += handler;
-        _dismissTimers[viewModel.RequestId] = timer;
-        timer.Start();
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(clampedSeconds), cts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                cts.Dispose();
+                return;
+            }
+
+            Dispatch(() =>
+            {
+                if (!_dismissDelays.Remove(viewModel.RequestId))
+                {
+                    cts.Dispose();
+                    return;
+                }
+
+                cts.Dispose();
+                BeginDismissal(viewModel);
+            });
+        });
     }
 
     private void CancelDismissTimer(string requestId)
     {
-        if (_dismissTimers.Remove(requestId, out var timer))
+        if (_dismissDelays.Remove(requestId, out var cts))
         {
-            timer.Stop();
+            cts.Cancel();
+            cts.Dispose();
         }
     }
 
@@ -485,11 +532,12 @@ public sealed class FloatingHudController : IDisposable
         _coordinator.RequestFailed -= OnRequestCompleted;
         SettingsHost.SettingChanged -= OnSettingChanged;
 
-        foreach (var timer in _dismissTimers.Values)
+        foreach (var delay in _dismissDelays.Values)
         {
-            timer.Stop();
+            delay.Cancel();
+            delay.Dispose();
         }
 
-        _dismissTimers.Clear();
+        _dismissDelays.Clear();
     }
 }

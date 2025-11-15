@@ -90,7 +90,7 @@
                               AutomationProperties.LiveSetting="Polite"
                               AutomationProperties.Name="{loc:Loc hud.automation.name}"
                               AutomationProperties.HelpText="{loc:Loc hud.automation.help}">
-                    <ItemsControl ItemsSource="{Binding Results}">
+                    <ItemsControl x:Name="ResultsItemsControl" ItemsSource="{Binding Results}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <StackPanel Orientation="Vertical" />
@@ -98,7 +98,8 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="{x:Type viewModels:FloatingResultViewModel}">
-                                <Border Background="{DynamicResource Brush.HudCardBackground}"
+                                <Border x:Name="ResultCard"
+                                    Background="{DynamicResource Brush.HudCardBackground}"
                                         CornerRadius="10"
                                         Padding="12"
                                         Margin="0,0,0,10">
@@ -149,27 +150,6 @@
                                                    Text="{Binding StatusText}"
                                                    FontSize="12"
                                                    Margin="0,0,24,4" />
-
-                                        <TextBlock Grid.Row="2"
-                                                   Grid.Column="0"
-                                                   Foreground="{DynamicResource Brush.HudTextSecondary}"
-                                                   Text="{Binding SizeSummary}"
-                                                   FontSize="12"
-                                                   Margin="0,18,24,0">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="Visibility" Value="Visible" />
-                                                    <Style.Triggers>
-                                                        <Trigger Property="Text" Value="">
-                                                            <Setter Property="Visibility" Value="Collapsed" />
-                                                        </Trigger>
-                                                        <Trigger Property="Text" Value="{x:Null}">
-                                                            <Setter Property="Visibility" Value="Collapsed" />
-                                                        </Trigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
 
                                         <ProgressBar Grid.Row="2"
                                                      Grid.Column="0"
