@@ -115,18 +115,18 @@ Clop-Windows/
 
 ### Phase 10 – Video Optimiser Enhancements
 
-- [ ] **P10.1 – Multi-encoder strategy**: Extend `VideoOptimiserOptions` to support AV1 (svt-av1/libaom), HEVC (x265/AMF), and VP9, picking the optimal encoder based on hardware (DXVA2, NVENC, Intel QSV). Mirror macOS heuristics for aggressive vs gentle pipelines.
-- [ ] **P10.2 – Scene-cut aware bitrate control**: Add two-pass or lookahead support for ffmpeg with `-pass` or `-rc-lookahead`, ensuring aggressive modes maintain perceived sharpness on high-motion clips.
-- [ ] **P10.3 – Intelligent frame decimation**: Implement motion-based frame culling using ffmpeg `mpdecimate`/`vidstab` filters to trim redundant frames while keeping output smooth, gated behind benchmark validation from Phase 8.
-- [ ] **P10.4 – Audio pipeline parity**: Support AAC/Opus re-encode, loudness normalisation, and channel down-mix options surfaced in the UI, matching macOS advanced toggles.
-- [ ] **P10.5 – GIF modernisation**: Replace the manual png frame staging with gifski library bindings or libimagequant to reduce artefacts, and offer APNG/WebP animated exports when quality thresholds demand it.
+- [x] **P10.1 – Multi-encoder strategy**: Extend `VideoOptimiserOptions` to support AV1 (svt-av1/libaom), HEVC (x265/AMF), and VP9, picking the optimal encoder based on hardware (DXVA2, NVENC, Intel QSV). Mirror macOS heuristics for aggressive vs gentle pipelines.
+- [x] **P10.2 – Scene-cut aware bitrate control**: Add two-pass or lookahead support for ffmpeg with `-pass` or `-rc-lookahead`, ensuring aggressive modes maintain perceived sharpness on high-motion clips.
+- [x] **P10.3 – Intelligent frame decimation**: Implement motion-based frame culling using ffmpeg `mpdecimate`/`vidstab` filters to trim redundant frames while keeping output smooth, gated behind benchmark validation from Phase 8.
+- [x] **P10.4 – Audio pipeline parity**: Support AAC/Opus re-encode, loudness normalisation, and channel down-mix options surfaced in the UI, matching macOS advanced toggles.
+- [x] **P10.5 – GIF modernisation**: Replace the manual png frame staging with gifski library bindings or libimagequant to reduce artefacts, and offer APNG/WebP animated exports when quality thresholds demand it.
 
 ### Phase 11 – PDF & Document Workflow
 
-- [ ] **P11.1 – Hybrid optimiser stack**: Combine Ghostscript with qpdf + OCRmyPDF to handle scanned documents, enabling deskew, background cleanup, and text layer regeneration analogous to macOS `PDF.swift` aggressive presets.
-- [ ] **P11.2 – Segmentation-driven compression**: Introduce content-aware segmentation (text vs images) so image-heavy PDFs route to libvips/mozjpeg while text blocks stay lossless. Store segmentation maps alongside results for compare view overlays.
-- [ ] **P11.3 – Incremental optimisation**: Detect already optimised PDFs (via custom ADS metadata) and skip heavy re-execution, offering delta-compress flows when only metadata changes.
-- [ ] **P11.4 – Accessibility metadata**: Align with macOS by injecting tagged PDF metadata (title, language, reading order) and validating output with PAC3/Adobe Preflight scripts.
+- [x] **P11.1 – Hybrid optimiser stack**: Combine Ghostscript with qpdf + Tesseract to handle scanned documents, enabling deskew, background cleanup, and text layer regeneration analogous to macOS `PDF.swift` aggressive presets.
+- [x] **P11.2 – Segmentation-driven compression**: Introduce content-aware segmentation (text vs images) so image-heavy PDFs route to libvips/mozjpeg while text blocks stay lossless. Store segmentation maps alongside results for compare view overlays.
+- [x] **P11.3 – Incremental optimisation**: Detect already optimised PDFs (via custom ADS metadata) and skip heavy re-execution, offering delta-compress flows when only metadata changes.
+- [x] **P11.4 – Accessibility metadata**: Align with macOS by injecting tagged PDF metadata (title, language, reading order) and validating output with PAC3/Adobe Preflight scripts.
 
 ### Phase 12 – Automation, Watchers, and Batch Intelligence
 
@@ -136,6 +136,16 @@ Clop-Windows/
 - [ ] **P12.4 – CLI power-user features**: Add watch mode (`clop watch`), JSON schema export, and shell completion scripts. Mirror macOS CLI flags and document them in `docs/cli.md`.
 
 ### Phase 13 – UI Modernisation & Theming
+
+## Colour & Theme Guidance (Quick Reference)
+
+- **Black Onyx (#050505)** base for shells and floating HUD backplates.
+- **Neon Green (#4FFFB0)** primary accent for success states and progress.
+- **Signal Red (#F45D5D)** alerts, aggressive-mode warnings.
+- **Ember Orange (#FF8A3D)** neutral emphasis (hover, pending actions).
+- **Royal Purple (#8C5BFF)** secondary accent for selection highlights and compare view tabs.
+
+Map these into `Brush.*` resources with light/dark variants and ensure High Contrast theme inherits correctly.
 
 - [ ] **P13.1 – Design system audit**: Define a colour token set (Black Onyx, Neon Green, Signal Red, Ember Orange, Royal Purple) and contrast rules. Update `Theme.Default.xaml` and add `Theme.Dark.xaml`/`Theme.HighSaturation.xaml` so users can toggle vibrant themes.
 - [ ] **P13.2 – Fluent/WinUI visual layer**: Swap heavy WPF gradients for Composition/Acrylic with `Microsoft.UI.Composition` interop (or migrate shell to WinUI 3 if feasible). Align animations with macOS `FloatingResult` transitions.
@@ -150,16 +160,6 @@ Clop-Windows/
 - [ ] **P14.3 – Installer extensions**: Bundle optional codec packs (AV1/HEIF) with hashed integrity checks. Offer modular downloads so users on constrained systems install only what they need.
 - [ ] **P14.4 – Cross-platform parity review**: Schedule quarterly parity checkpoints with the macOS repo. Diff presets, defaults, and UI flows, logging mismatches in `docs/parity-audits/`.
 - [ ] **P14.5 – Performance budgets**: Set and enforce budgets (per-file encode time, HUD render FPS, memory usage). Fail CI when new features exceed thresholds without explicit waivers.
-
-## Colour & Theme Guidance (Quick Reference)
-
-- **Black Onyx (#050505)** base for shells and floating HUD backplates.
-- **Neon Green (#4FFFB0)** primary accent for success states and progress.
-- **Signal Red (#F45D5D)** alerts, aggressive-mode warnings.
-- **Ember Orange (#FF8A3D)** neutral emphasis (hover, pending actions).
-- **Royal Purple (#8C5BFF)** secondary accent for selection highlights and compare view tabs.
-
-Map these into `Brush.*` resources with light/dark variants and ensure High Contrast theme inherits correctly.
 
 ### Phase 6 – Release Readiness
 

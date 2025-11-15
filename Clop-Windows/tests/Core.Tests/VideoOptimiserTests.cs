@@ -83,8 +83,100 @@ public sealed class VideoOptimiserTests : IDisposable
         var gif = result.OutputPath!.Value;
         Track(gif);
         Assert.EndsWith(".gif", gif.Value, StringComparison.OrdinalIgnoreCase);
-        Assert.Single(toolchain.GifPlans);
+        Assert.Single(toolchain.AnimatedPlans);
         Assert.Empty(toolchain.TranscodePlans);
+    }
+
+    [Fact]
+    public async Task AggressiveModePrefersAv1WhenHardwareAvailable()
+    {
+        var source = Track(CreateSampleVideo());
+        var hardware = new VideoHardwareCapabilities(
+            SupportsNvenc: true,
+            SupportsAmf: false,
+            SupportsQsv: false,
+            SupportsDxva: true,
+            SupportsAv1Nvenc: true,
+            SupportsAv1Amf: false,
+            SupportsAv1Qsv: false,
+            SupportsHevcNvenc: true,
+            SupportsHevcAmf: false,
+            SupportsHevcQsv: false);
+
+        var options = VideoOptimiserOptions.Default with
+        {
+            ForceMp4 = false,
+            PreferAv1WhenAggressive = true,
+            HardwareOverride = hardware,
+            RequireSmallerSize = false
+        };
+
+        var toolchain = new FakeVideoToolchain();
+        var optimiser = new VideoOptimiser(options, toolchain);
+
+        var metadata = new Dictionary<string, object?>
+        {
+            ["video.aggressive"] = true
+        };
+
+        await using var coordinator = new OptimisationCoordinator(new IOptimiser[] { optimiser });
+        var ticket = coordinator.Enqueue(new OptimisationRequest(ItemType.Video, source, metadata: metadata));
+        var result = await ticket.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(OptimisationStatus.Succeeded, result.Status);
+        var plan = Assert.Single(toolchain.TranscodePlans);
+        Assert.Equal(VideoCodec.Av1, plan.Encoder.Codec);
+        Assert.Equal("mkv", plan.OutputExtension);
+    }
+
+    [Fact]
+    public async Task AudioNormalizationTriggersReencode()
+    {
+        var source = Track(CreateSampleVideo(sizeBytes: 8192));
+        var toolchain = new FakeVideoToolchain();
+        var options = VideoOptimiserOptions.Default with { RequireSmallerSize = false };
+        var optimiser = new VideoOptimiser(options, toolchain);
+
+        var metadata = new Dictionary<string, object?>
+        {
+            ["video.audioNormalize"] = true,
+            ["video.audioCodec"] = "aac"
+        };
+
+        await using var coordinator = new OptimisationCoordinator(new IOptimiser[] { optimiser });
+        var ticket = coordinator.Enqueue(new OptimisationRequest(ItemType.Video, source, metadata: metadata));
+        var result = await ticket.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(OptimisationStatus.Succeeded, result.Status);
+        var plan = Assert.Single(toolchain.TranscodePlans);
+        Assert.False(plan.Audio.RemoveAudio);
+        Assert.False(plan.Audio.CopyStream);
+        Assert.True(plan.Audio.NormalizeLoudness);
+        Assert.Equal(options.AudioEncoderAac, plan.Audio.Encoder);
+    }
+
+    [Fact]
+    public async Task AnimatedFormatHonoursMetadataPreference()
+    {
+        var source = Track(CreateSampleVideo());
+        var toolchain = new FakeVideoToolchain();
+        var optimiser = new VideoOptimiser(VideoOptimiserOptions.Default with { RequireSmallerSize = false }, toolchain);
+
+        var metadata = new Dictionary<string, object?>
+        {
+            ["video.mode"] = "gif",
+            ["video.animatedFormat"] = "webp"
+        };
+
+        await using var coordinator = new OptimisationCoordinator(new IOptimiser[] { optimiser });
+        var ticket = coordinator.Enqueue(new OptimisationRequest(ItemType.Video, source, metadata: metadata));
+        var result = await ticket.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(OptimisationStatus.Succeeded, result.Status);
+        Assert.NotNull(result.OutputPath);
+        Assert.EndsWith(".webp", result.OutputPath!.Value.Value, StringComparison.OrdinalIgnoreCase);
+        var plan = Assert.Single(toolchain.AnimatedPlans);
+        Assert.Equal(AnimatedExportFormat.AnimatedWebp, plan.AnimatedFormat);
     }
 
     public void Dispose()
@@ -129,7 +221,7 @@ public sealed class VideoOptimiserTests : IDisposable
     private sealed class FakeVideoToolchain : IVideoToolchain
     {
         public List<VideoOptimiserPlan> TranscodePlans { get; } = new();
-        public List<VideoOptimiserPlan> GifPlans { get; } = new();
+        public List<VideoOptimiserPlan> AnimatedPlans { get; } = new();
 
         public Task<ToolchainResult> TranscodeAsync(VideoOptimiserPlan plan, FilePath tempOutput, OptimiserExecutionContext context, CancellationToken cancellationToken)
         {
@@ -139,10 +231,10 @@ public sealed class VideoOptimiserTests : IDisposable
             return Task.FromResult(ToolchainResult.Successful());
         }
 
-        public Task<ToolchainResult> ConvertToGifAsync(VideoOptimiserPlan plan, FilePath tempOutput, OptimiserExecutionContext context, CancellationToken cancellationToken)
+        public Task<ToolchainResult> ConvertToAnimatedAsync(VideoOptimiserPlan plan, FilePath tempOutput, OptimiserExecutionContext context, CancellationToken cancellationToken)
         {
-            GifPlans.Add(plan);
-            context.ReportProgress(50, "fake gif");
+            AnimatedPlans.Add(plan);
+            context.ReportProgress(50, "fake animation");
             File.WriteAllBytes(tempOutput.Value, Enumerable.Repeat((byte)0x2, 256).ToArray());
             return Task.FromResult(ToolchainResult.Successful());
         }

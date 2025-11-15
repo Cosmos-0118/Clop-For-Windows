@@ -8,6 +8,8 @@ namespace ClopWindows.Core.Shared;
 /// </summary>
 public static class NumericExtensions
 {
+    public static string ToInvariantString(this double value) => value.ToString(CultureInfo.InvariantCulture);
+
     public static string ToInvariantString(this int value) => value.ToString(CultureInfo.InvariantCulture);
 
     public static double AsDouble(this int value) => Convert.ToDouble(value, CultureInfo.InvariantCulture);

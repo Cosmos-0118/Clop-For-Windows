@@ -51,7 +51,7 @@ public sealed class VideoOptimiser : IOptimiser
         {
             VideoOptimiserMode.Gif when !_options.EnableGifExport
                 => OptimisationResult.Failure(request.RequestId, "GIF export disabled in configuration."),
-            VideoOptimiserMode.Gif => await RunGifOptimisationAsync(request, plan, context, cancellationToken).ConfigureAwait(false),
+            VideoOptimiserMode.Gif => await RunAnimatedOptimisationAsync(request, plan, context, cancellationToken).ConfigureAwait(false),
             _ => await RunVideoOptimisationAsync(request, plan, context, cancellationToken).ConfigureAwait(false)
         };
     }
@@ -108,28 +108,30 @@ public sealed class VideoOptimiser : IOptimiser
         }
     }
 
-    private async Task<OptimisationResult> RunGifOptimisationAsync(OptimisationRequest request, VideoOptimiserPlan plan, OptimiserExecutionContext context, CancellationToken cancellationToken)
+    private async Task<OptimisationResult> RunAnimatedOptimisationAsync(OptimisationRequest request, VideoOptimiserPlan plan, OptimiserExecutionContext context, CancellationToken cancellationToken)
     {
-        context.ReportProgress(5, "Preparing GIF export");
-        if (string.IsNullOrWhiteSpace(_options.GifskiPath))
+        context.ReportProgress(5, plan.AnimatedFormat switch
         {
-            return OptimisationResult.Failure(request.RequestId, "GIF export requested but gifski path is not configured.");
-        }
+            AnimatedExportFormat.Apng => "Preparing APNG export",
+            AnimatedExportFormat.AnimatedWebp => "Preparing WebP export",
+            _ => "Preparing GIF export"
+        });
 
-        var tempOutput = FilePath.TempFile("clop-gif", ".gif", addUniqueSuffix: true);
+        var tempOutput = FilePath.TempFile("clop-anim", $".{plan.OutputExtension}", addUniqueSuffix: true);
         tempOutput.EnsureParentDirectoryExists();
 
         try
         {
-            var toolchainResult = await _toolchain.ConvertToGifAsync(plan, tempOutput, context, cancellationToken).ConfigureAwait(false);
+            var toolchainResult = await _toolchain.ConvertToAnimatedAsync(plan, tempOutput, context, cancellationToken).ConfigureAwait(false);
+
             if (!toolchainResult.Success)
             {
-                return OptimisationResult.Failure(request.RequestId, toolchainResult.ErrorMessage ?? "GIF export failed");
+                return OptimisationResult.Failure(request.RequestId, toolchainResult.ErrorMessage ?? "Animated export failed");
             }
 
             if (!File.Exists(tempOutput.Value))
             {
-                return OptimisationResult.Failure(request.RequestId, "GIF export produced no output file");
+                return OptimisationResult.Failure(request.RequestId, "Animated export produced no output file");
             }
 
             var finalOutput = BuildOutputPath(plan);
@@ -140,7 +142,7 @@ public sealed class VideoOptimiser : IOptimiser
             File.Copy(tempOutput.Value, finalOutput.Value, overwrite: true);
             CopyTimestamps(plan.SourcePath, finalOutput, plan.PreserveTimestamps);
 
-            var message = DescribeImprovement(originalSize, optimisedSize, plan, isGif: true);
+            var message = DescribeImprovement(originalSize, optimisedSize, plan, isGif: plan.AnimatedFormat == AnimatedExportFormat.Gif);
             context.ReportProgress(100, message);
             return new OptimisationResult(request.RequestId, OptimisationStatus.Succeeded, finalOutput, message);
         }
@@ -150,7 +152,7 @@ public sealed class VideoOptimiser : IOptimiser
         }
         catch (Exception ex)
         {
-            Log.Error($"GIF export failed: {ex.Message}");
+            Log.Error($"Animated export failed: {ex.Message}");
             return OptimisationResult.Failure(request.RequestId, ex.Message);
         }
         finally
@@ -252,8 +254,7 @@ public sealed class VideoOptimiser : IOptimiser
         var forceMp4 = ReadBool(metadata, "video.forceMp4") ?? options.ForceMp4;
         var removeAudio = ReadBool(metadata, "video.removeAudio") ?? options.RemoveAudio;
         var capFps = ReadBool(metadata, "video.capFps") ?? options.CapFps;
-        var targetFps = ReadInt(metadata, "video.targetFps") ?? options.TargetFps;
-        targetFps = Math.Max(options.MinFps, targetFps);
+        var targetFps = Math.Max(options.MinFps, ReadInt(metadata, "video.targetFps") ?? options.TargetFps);
         var playbackSpeed = ReadDouble(metadata, "video.playbackSpeed");
         var maxWidth = ReadInt(metadata, "video.maxWidth");
         var maxHeight = ReadInt(metadata, "video.maxHeight");
@@ -261,40 +262,74 @@ public sealed class VideoOptimiser : IOptimiser
         var gifWidth = ReadInt(metadata, "video.gifMaxWidth") ?? options.GifMaxWidth;
         var gifFps = ReadInt(metadata, "video.gifFps") ?? options.GifFps;
         var gifQuality = ReadInt(metadata, "video.gifQuality") ?? options.GifQuality;
-        var outputExtension = mode == VideoOptimiserMode.Gif
-            ? "gif"
-            : (ReadString(metadata, "video.extension") ?? (forceMp4 ? "mp4" : request.SourcePath.Extension ?? options.DefaultVideoExtension));
-        outputExtension = string.IsNullOrWhiteSpace(outputExtension)
+        var requestedExtension = ReadString(metadata, "video.extension") ?? request.SourcePath.Extension ?? options.DefaultVideoExtension;
+        requestedExtension = string.IsNullOrWhiteSpace(requestedExtension)
             ? options.DefaultVideoExtension
-            : outputExtension.Trim().TrimStart('.');
+            : requestedExtension.Trim().TrimStart('.');
 
-        var filters = BuildFilters(maxWidth, maxHeight, playbackSpeed, options.EnforceEvenDimensions, capFps, targetFps);
+        var codecOverride = ParseCodec(ReadString(metadata, "video.codec"));
+
+        var animatedFormat = DetermineAnimatedFormat(mode, metadata, options);
+        var hardware = options.HardwareOverride ?? VideoHardwareDetector.Detect(options.FfmpegPath, options.ProbeHardwareCapabilities);
+        var encoderSelection = SelectEncoder(options, hardware, aggressive, forceMp4, requestedExtension, codecOverride);
+
+        var outputExtension = mode == VideoOptimiserMode.Gif
+            ? ResolveAnimatedExtension(animatedFormat)
+            : ResolveVideoExtension(encoderSelection, requestedExtension, forceMp4);
+
+        var frameDecimation = BuildFrameDecimationPlan(options, ReadBool(metadata, "video.frameDecimation"), mode);
+        var filters = BuildFilters(maxWidth, maxHeight, playbackSpeed, options.EnforceEvenDimensions, capFps, targetFps, frameDecimation);
+
+        var lookahead = DetermineLookahead(options, encoderSelection);
+        var useTwoPass = ShouldUseTwoPass(options, encoderSelection, aggressive);
+
+        var audioPlan = BuildAudioPlan(metadata, options, removeAudio, outputExtension, encoderSelection);
+        var softwareFallback = encoderSelection.UseHardwareEncoder
+            ? CreateSoftwareSelection(options, encoderSelection.Codec, aggressive, forceMp4, requestedExtension)
+            : null;
+
+        var videoCodecArgs = BuildVideoCodecArguments(options, encoderSelection, aggressive, lookahead);
 
         return new VideoOptimiserPlan(
             request.SourcePath,
             mode,
             outputExtension,
             forceMp4,
-            removeAudio,
+            audioPlan.RemoveAudio,
             capFps,
             targetFps,
             playbackSpeed,
             maxWidth,
             maxHeight,
             filters,
-            options.UseHardwareAcceleration,
+            encoderSelection.UseHardwareEncoder,
             aggressive,
             options.StripMetadata,
             options.PreserveTimestamps,
             options.RequireSmallerSize,
             gifWidth,
             gifFps,
-            gifQuality);
+            gifQuality,
+            encoderSelection,
+            softwareFallback,
+            videoCodecArgs,
+            audioPlan,
+            frameDecimation,
+            animatedFormat,
+            useTwoPass,
+            lookahead,
+            options.EnableSceneCutAwareBitrate && encoderSelection.SceneCutAware);
     }
 
-    private static IReadOnlyList<string> BuildFilters(int? maxWidth, int? maxHeight, double? playbackSpeed, bool enforceEven, bool capFps, int targetFps)
+    private static IReadOnlyList<string> BuildFilters(int? maxWidth, int? maxHeight, double? playbackSpeed, bool enforceEven, bool capFps, int targetFps, FrameDecimationPlan frameDecimation)
     {
         var filters = new List<string>();
+
+        if (frameDecimation.Enabled)
+        {
+            filters.Add($"mpdecimate=hi={frameDecimation.HighThreshold.ToInvariantString()}:lo={frameDecimation.LowThreshold.ToInvariantString()}:max={frameDecimation.MaxDurationDifference.ToInvariantString()}");
+        }
+
         if (maxWidth.HasValue || maxHeight.HasValue)
         {
             var width = maxWidth.HasValue ? EnsureEven(maxWidth.Value, enforceEven) : "-2";
@@ -321,6 +356,150 @@ public sealed class VideoOptimiser : IOptimiser
         return enforceEven ? value.EvenInt().ToInvariantString() : value.ToInvariantString();
     }
 
+    private static VideoCodec? ParseCodec(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "h264" or "avc" => VideoCodec.H264,
+            "h265" or "hevc" => VideoCodec.Hevc,
+            "av1" => VideoCodec.Av1,
+            "vp9" => VideoCodec.Vp9,
+            _ => null
+        };
+    }
+
+    private static AnimatedExportFormat DetermineAnimatedFormat(VideoOptimiserMode mode, IReadOnlyDictionary<string, object?> metadata, VideoOptimiserOptions options)
+    {
+        if (mode != VideoOptimiserMode.Gif)
+        {
+            return AnimatedExportFormat.Gif;
+        }
+
+        var requested = ReadString(metadata, "video.animatedFormat") ?? ReadString(metadata, "video.animated") ?? ReadString(metadata, "video.gifFormat");
+        if (requested is not null && TryParseAnimatedFormat(requested, out var parsed))
+        {
+            return parsed;
+        }
+
+        if (options.PreferAnimatedWebpForHighQuality && (ReadBool(metadata, "video.aggressive") ?? options.AggressiveQuality))
+        {
+            return AnimatedExportFormat.AnimatedWebp;
+        }
+
+        return options.PreferredAnimatedExport;
+    }
+
+    private static bool TryParseAnimatedFormat(string value, out AnimatedExportFormat format)
+    {
+        format = AnimatedExportFormat.Gif;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        switch (value.Trim().ToLowerInvariant())
+        {
+            case "gif":
+            case "animated-gif":
+                format = AnimatedExportFormat.Gif;
+                return true;
+            case "apng":
+                format = AnimatedExportFormat.Apng;
+                return true;
+            case "webp":
+            case "animated-webp":
+                format = AnimatedExportFormat.AnimatedWebp;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static string ResolveAnimatedExtension(AnimatedExportFormat format) => format switch
+    {
+        AnimatedExportFormat.Apng => "apng",
+        AnimatedExportFormat.AnimatedWebp => "webp",
+        _ => "gif"
+    };
+
+    private static string ResolveVideoExtension(VideoEncoderSelection selection, string requested, bool forceMp4)
+    {
+        if (forceMp4)
+        {
+            return "mp4";
+        }
+
+        if (string.IsNullOrWhiteSpace(requested))
+        {
+            return selection.ContainerExtension;
+        }
+
+        var candidate = requested.Trim().ToLowerInvariant();
+        return IsCodecCompatibleWithExtension(selection.Codec, candidate)
+            ? candidate
+            : selection.ContainerExtension;
+    }
+
+    private static bool IsCodecCompatibleWithExtension(VideoCodec codec, string extension)
+    {
+        return extension switch
+        {
+            "mp4" or "mov" or "m4v" => codec is VideoCodec.H264 or VideoCodec.Hevc,
+            "mkv" => true,
+            "webm" => codec == VideoCodec.Vp9,
+            _ => true
+        };
+    }
+
+    private static FrameDecimationPlan BuildFrameDecimationPlan(VideoOptimiserOptions options, bool? overrideValue, VideoOptimiserMode mode)
+    {
+        if (mode == VideoOptimiserMode.Gif)
+        {
+            return FrameDecimationPlan.Disabled;
+        }
+
+        var enabled = overrideValue ?? options.EnableFrameDecimation;
+        return enabled
+            ? new FrameDecimationPlan(true, options.FrameDecimationHighThreshold, options.FrameDecimationLowThreshold, options.FrameDecimationMaxDifference)
+            : FrameDecimationPlan.Disabled;
+    }
+
+    private static int? DetermineLookahead(VideoOptimiserOptions options, VideoEncoderSelection encoderSelection)
+    {
+        if (!options.EnableSceneCutAwareBitrate)
+        {
+            return null;
+        }
+
+        if (encoderSelection.SuggestedLookaheadFrames <= 0)
+        {
+            return null;
+        }
+
+        var baseline = encoderSelection.UseHardwareEncoder ? options.HardwareLookaheadFrames : options.SoftwareLookaheadFrames;
+        return Math.Max(0, Math.Min(baseline, encoderSelection.SuggestedLookaheadFrames));
+    }
+
+    private static bool ShouldUseTwoPass(VideoOptimiserOptions options, VideoEncoderSelection selection, bool aggressive)
+    {
+        if (!options.EnableTwoPassEncoding)
+        {
+            return false;
+        }
+
+        if (selection.UseHardwareEncoder || !selection.SupportsTwoPass)
+        {
+            return false;
+        }
+
+        return selection.SuggestTwoPass || aggressive;
+    }
+
     private static VideoOptimiserMode ParseMode(IReadOnlyDictionary<string, object?> metadata, VideoOptimiserOptions options)
     {
         if (ReadString(metadata, "video.mode") is { } value && options.GifTriggers.Any(trigger => trigger.Equals(value, StringComparison.OrdinalIgnoreCase)))
@@ -328,6 +507,322 @@ public sealed class VideoOptimiser : IOptimiser
             return VideoOptimiserMode.Gif;
         }
         return VideoOptimiserMode.Video;
+    }
+
+    private static AudioPlan BuildAudioPlan(IReadOnlyDictionary<string, object?> metadata, VideoOptimiserOptions options, bool removeAudio, string outputExtension, VideoEncoderSelection encoder)
+    {
+        if (removeAudio)
+        {
+            return AudioPlan.Remove;
+        }
+
+        var codecOverride = ReadString(metadata, "video.audioCodec")?.Trim();
+        var bitrate = ReadInt(metadata, "video.audioBitrate") ?? options.AudioTargetBitrateKbps;
+        var channels = ReadInt(metadata, "video.audioChannels") ?? options.AudioDownmixChannels;
+        var normalize = ReadBool(metadata, "video.audioNormalize") ?? options.EnableAudioNormalization;
+
+        if (codecOverride is not null && codecOverride.Equals("copy", StringComparison.OrdinalIgnoreCase) && !normalize)
+        {
+            return AudioPlan.Copy;
+        }
+
+        var targetEncoder = DetermineAudioEncoder(outputExtension, codecOverride, options);
+        var loudness = new LoudnessProfile(options.LoudnessTargetIntegrated, options.LoudnessTargetTruePeak, options.LoudnessTargetLra);
+
+        var reencodeRequested = normalize
+            || codecOverride is not null
+            || !outputExtension.Equals("mp4", StringComparison.OrdinalIgnoreCase)
+            || encoder.Codec == VideoCodec.Av1
+            || encoder.Codec == VideoCodec.Vp9;
+
+        if (!reencodeRequested)
+        {
+            return AudioPlan.Copy;
+        }
+
+        return new AudioPlan(false, false, targetEncoder, bitrate, channels, normalize, loudness);
+    }
+
+    private static string DetermineAudioEncoder(string extension, string? overrideValue, VideoOptimiserOptions options)
+    {
+        if (!string.IsNullOrWhiteSpace(overrideValue))
+        {
+            return overrideValue.Trim().ToLowerInvariant() switch
+            {
+                "opus" => options.AudioEncoderOpus,
+                "aac" or "mp4a" => options.AudioEncoderAac,
+                "copy" => options.AudioEncoderAac,
+                _ => overrideValue
+            };
+        }
+
+        return extension.Equals("webm", StringComparison.OrdinalIgnoreCase) ? options.AudioEncoderOpus : options.AudioEncoderAac;
+    }
+
+    internal static IReadOnlyList<string> BuildVideoCodecArguments(VideoOptimiserOptions options, VideoEncoderSelection selection, bool aggressive, int? lookahead)
+    {
+        var args = new List<string>();
+
+        if (selection.UseHardwareEncoder)
+        {
+            if (!string.IsNullOrWhiteSpace(selection.HardwareAcceleration))
+            {
+                args.Add("-hwaccel");
+                args.Add(selection.HardwareAcceleration!);
+            }
+
+            if (!string.IsNullOrWhiteSpace(selection.HardwareOutputFormat))
+            {
+                args.Add("-hwaccel_output_format");
+                args.Add(selection.HardwareOutputFormat!);
+            }
+
+            args.Add("-c:v");
+            args.Add(selection.VideoEncoder);
+
+            args.Add(selection.RateControlFlag);
+            args.Add(selection.Quality.ToInvariantString());
+
+            if (selection.RateControlFlag.Equals("-cq", StringComparison.OrdinalIgnoreCase))
+            {
+                args.Add("-b:v");
+                args.Add("0");
+            }
+
+            if (lookahead.HasValue && lookahead.Value > 0)
+            {
+                args.Add("-rc-lookahead");
+                args.Add(lookahead.Value.ToInvariantString());
+            }
+
+            if (options.EnableSceneCutAwareBitrate && selection.SceneCutAware)
+            {
+                args.Add("-sc_threshold");
+                args.Add(options.SceneCutThreshold.ToInvariantString());
+            }
+        }
+        else
+        {
+            args.Add("-c:v");
+            args.Add(selection.VideoEncoder);
+
+            args.Add(selection.RateControlFlag);
+            args.Add(selection.Quality.ToInvariantString());
+
+            args.Add("-preset");
+            args.Add(GetSoftwarePreset(options, selection.Codec, aggressive));
+
+            if (lookahead.HasValue && lookahead.Value > 0)
+            {
+                args.Add("-rc-lookahead");
+                args.Add(lookahead.Value.ToInvariantString());
+            }
+
+            if (options.EnableSceneCutAwareBitrate && selection.SceneCutAware)
+            {
+                args.Add("-sc_threshold");
+                args.Add(options.SceneCutThreshold.ToInvariantString());
+            }
+        }
+
+        args.Add("-pix_fmt");
+        args.Add(selection.PixelFormat);
+
+        if (selection.AdditionalArguments.Count > 0)
+        {
+            args.AddRange(selection.AdditionalArguments);
+        }
+
+        return args;
+    }
+
+    private static string GetSoftwarePreset(VideoOptimiserOptions options, VideoCodec codec, bool aggressive) => codec switch
+    {
+        VideoCodec.Hevc => aggressive ? options.SoftwarePresetHevcAggressive : options.SoftwarePresetHevcGentle,
+        VideoCodec.Av1 => aggressive ? options.SoftwarePresetAv1Aggressive : options.SoftwarePresetAv1Gentle,
+        VideoCodec.Vp9 => aggressive ? options.SoftwarePresetVp9Aggressive : options.SoftwarePresetVp9Gentle,
+        _ => aggressive ? options.SoftwarePresetAggressive : options.SoftwarePresetGentle
+    };
+
+    private static VideoEncoderSelection SelectEncoder(VideoOptimiserOptions options, VideoHardwareCapabilities hardware, bool aggressive, bool forceMp4, string requestedExtension, VideoCodec? overrideCodec)
+    {
+        var candidates = BuildCodecPriorityList(options, aggressive, requestedExtension, overrideCodec);
+        foreach (var codec in candidates)
+        {
+            if (TrySelectHardwareEncoder(options, hardware, codec, aggressive, forceMp4, requestedExtension, out var hardwareSelection))
+            {
+                return hardwareSelection;
+            }
+
+            var softwareSelection = CreateSoftwareSelection(options, codec, aggressive, forceMp4, requestedExtension);
+            if (softwareSelection is not null)
+            {
+                return softwareSelection;
+            }
+        }
+
+        return CreateSoftwareSelection(options, VideoCodec.H264, aggressive, forceMp4, requestedExtension)
+            ?? VideoEncoderSelection.Software(VideoCodec.H264, options.SoftwareEncoder, ResolveContainerForCodec(VideoCodec.H264, requestedExtension, forceMp4), "yuv420p", AdjustSoftwareCrf(options.SoftwareCrf, aggressive), Array.Empty<string>(), true, true, options.SoftwareLookaheadFrames, true);
+    }
+
+    private static IEnumerable<VideoCodec> BuildCodecPriorityList(VideoOptimiserOptions options, bool aggressive, string requestedExtension, VideoCodec? overrideCodec)
+    {
+        var seen = new HashSet<VideoCodec>();
+        if (overrideCodec.HasValue)
+        {
+            seen.Add(overrideCodec.Value);
+            yield return overrideCodec.Value;
+        }
+
+        if (options.PreferAv1WhenAggressive && aggressive && seen.Add(VideoCodec.Av1))
+        {
+            yield return VideoCodec.Av1;
+        }
+
+        if (requestedExtension.Equals("webm", StringComparison.OrdinalIgnoreCase) && options.PreferVp9ForWebm && seen.Add(VideoCodec.Vp9))
+        {
+            yield return VideoCodec.Vp9;
+        }
+
+        if (seen.Add(VideoCodec.Hevc))
+        {
+            yield return VideoCodec.Hevc;
+        }
+
+        if (seen.Add(VideoCodec.H264))
+        {
+            yield return VideoCodec.H264;
+        }
+
+        if (seen.Add(VideoCodec.Vp9))
+        {
+            yield return VideoCodec.Vp9;
+        }
+
+        if (seen.Add(VideoCodec.Av1))
+        {
+            yield return VideoCodec.Av1;
+        }
+    }
+
+    private static bool TrySelectHardwareEncoder(VideoOptimiserOptions options, VideoHardwareCapabilities hardware, VideoCodec codec, bool aggressive, bool forceMp4, string requestedExtension, out VideoEncoderSelection selection)
+    {
+        selection = null!;
+        if (!options.UseHardwareAcceleration || !hardware.HasAnyHardware)
+        {
+            return false;
+        }
+
+        var container = ResolveContainerForCodec(codec, requestedExtension, forceMp4);
+
+        switch (codec)
+        {
+            case VideoCodec.H264:
+                if (hardware.SupportsNvenc)
+                {
+                    selection = VideoEncoderSelection.Hardware(VideoCodec.H264, "h264_nvenc", container, "yuv420p", "cuda", "cuda", AdjustHardwareQuality(options.HardwareQuality, aggressive), Array.Empty<string>(), supportsTwoPass: false, suggestedLookahead: 12, sceneCutAware: true);
+                    return true;
+                }
+                if (hardware.SupportsAmf)
+                {
+                    selection = VideoEncoderSelection.Hardware(VideoCodec.H264, options.HardwareEncoder, container, "yuv420p", "d3d11va", null, AdjustHardwareQuality(options.HardwareQuality, aggressive), Array.Empty<string>(), supportsTwoPass: false, suggestedLookahead: 10, sceneCutAware: true);
+                    return true;
+                }
+                if (hardware.SupportsQsv)
+                {
+                    selection = VideoEncoderSelection.Hardware(VideoCodec.H264, "h264_qsv", container, "yuv420p", "qsv", null, AdjustHardwareQuality(options.HardwareQuality, aggressive), Array.Empty<string>(), supportsTwoPass: false, suggestedLookahead: 10, sceneCutAware: true);
+                    return true;
+                }
+                break;
+            case VideoCodec.Hevc:
+                if (hardware.SupportsHevcNvenc)
+                {
+                    selection = VideoEncoderSelection.Hardware(VideoCodec.Hevc, "hevc_nvenc", container, "p010le", "cuda", "cuda", AdjustHardwareQuality(options.HardwareQualityHevc, aggressive, 3), Array.Empty<string>(), supportsTwoPass: false, suggestedLookahead: 12, sceneCutAware: true);
+                    return true;
+                }
+                if (hardware.SupportsHevcAmf)
+                {
+                    selection = VideoEncoderSelection.Hardware(VideoCodec.Hevc, options.HardwareEncoderHevc, container, "p010le", "d3d11va", null, AdjustHardwareQuality(options.HardwareQualityHevc, aggressive, 3), Array.Empty<string>(), supportsTwoPass: false, suggestedLookahead: 10, sceneCutAware: true);
+                    return true;
+                }
+                if (hardware.SupportsHevcQsv)
+                {
+                    selection = VideoEncoderSelection.Hardware(VideoCodec.Hevc, "hevc_qsv", container, "p010le", "qsv", null, AdjustHardwareQuality(options.HardwareQualityHevc, aggressive, 3), Array.Empty<string>(), supportsTwoPass: false, suggestedLookahead: 10, sceneCutAware: true);
+                    return true;
+                }
+                break;
+            case VideoCodec.Av1:
+                if (hardware.SupportsAv1Nvenc)
+                {
+                    selection = VideoEncoderSelection.Hardware(VideoCodec.Av1, "av1_nvenc", container, "p010le", "cuda", "cuda", AdjustHardwareQuality(options.HardwareQualityAv1, aggressive, 4), Array.Empty<string>(), supportsTwoPass: false, suggestedLookahead: 14, sceneCutAware: true);
+                    return true;
+                }
+                if (hardware.SupportsAv1Amf)
+                {
+                    selection = VideoEncoderSelection.Hardware(VideoCodec.Av1, options.HardwareEncoderAv1, container, "p010le", "d3d11va", null, AdjustHardwareQuality(options.HardwareQualityAv1, aggressive, 4), Array.Empty<string>(), supportsTwoPass: false, suggestedLookahead: 12, sceneCutAware: true);
+                    return true;
+                }
+                if (hardware.SupportsAv1Qsv)
+                {
+                    selection = VideoEncoderSelection.Hardware(VideoCodec.Av1, "av1_qsv", container, "p010le", "qsv", null, AdjustHardwareQuality(options.HardwareQualityAv1, aggressive, 4), Array.Empty<string>(), supportsTwoPass: false, suggestedLookahead: 12, sceneCutAware: true);
+                    return true;
+                }
+                break;
+            case VideoCodec.Vp9:
+                if (hardware.SupportsQsv)
+                {
+                    selection = VideoEncoderSelection.Hardware(VideoCodec.Vp9, "vp9_qsv", container, "yuv420p", "qsv", null, AdjustHardwareQuality(options.HardwareQualityVp9, aggressive, 4), Array.Empty<string>(), supportsTwoPass: false, suggestedLookahead: 10, sceneCutAware: false);
+                    return true;
+                }
+                break;
+        }
+
+        return false;
+    }
+
+    private static int AdjustHardwareQuality(int baseline, bool aggressive, int offset = 2)
+    {
+        return aggressive ? Math.Max(0, baseline - offset) : baseline;
+    }
+
+    private static string ResolveContainerForCodec(VideoCodec codec, string requestedExtension, bool forceMp4)
+    {
+        var defaultContainer = codec switch
+        {
+            VideoCodec.Vp9 => "webm",
+            VideoCodec.Av1 => "mkv",
+            _ => "mp4"
+        };
+
+        if (forceMp4)
+        {
+            return "mp4";
+        }
+
+        if (string.IsNullOrWhiteSpace(requestedExtension))
+        {
+            return defaultContainer;
+        }
+
+        return IsCodecCompatibleWithExtension(codec, requestedExtension) ? requestedExtension : defaultContainer;
+    }
+
+    private static VideoEncoderSelection? CreateSoftwareSelection(VideoOptimiserOptions options, VideoCodec codec, bool aggressive, bool forceMp4, string requestedExtension)
+    {
+        var container = ResolveContainerForCodec(codec, requestedExtension, forceMp4);
+        return codec switch
+        {
+            VideoCodec.H264 => VideoEncoderSelection.Software(VideoCodec.H264, options.SoftwareEncoder, container, "yuv420p", AdjustSoftwareCrf(options.SoftwareCrf, aggressive), additionalArgs: Array.Empty<string>(), supportsTwoPass: true, suggestTwoPass: true, suggestedLookahead: options.SoftwareLookaheadFrames, sceneCutAware: true),
+            VideoCodec.Hevc => VideoEncoderSelection.Software(VideoCodec.Hevc, options.SoftwareEncoderHevc, container, "yuv420p10le", AdjustSoftwareCrf(options.SoftwareCrfHevc, aggressive, 3), additionalArgs: Array.Empty<string>(), supportsTwoPass: true, suggestTwoPass: true, suggestedLookahead: options.SoftwareLookaheadFrames, sceneCutAware: true),
+            VideoCodec.Av1 => VideoEncoderSelection.Software(VideoCodec.Av1, options.SoftwareEncoderAv1, container, "yuv420p10le", AdjustSoftwareCrf(options.SoftwareCrfAv1, aggressive, 6), additionalArgs: Array.Empty<string>(), supportsTwoPass: true, suggestTwoPass: aggressive, suggestedLookahead: options.SoftwareLookaheadFrames, sceneCutAware: true),
+            VideoCodec.Vp9 => VideoEncoderSelection.Software(VideoCodec.Vp9, options.SoftwareEncoderVp9, container, "yuv420p", AdjustSoftwareCrf(options.SoftwareCrfVp9, aggressive, 5), additionalArgs: new[] { "-b:v", "0", "-row-mt", "1" }, supportsTwoPass: true, suggestTwoPass: true, suggestedLookahead: options.SoftwareLookaheadFrames, sceneCutAware: false),
+            _ => null
+        };
+    }
+
+    private static int AdjustSoftwareCrf(int baseline, bool aggressive, int offset = 4)
+    {
+        return aggressive ? Math.Max(0, baseline - offset) : baseline;
     }
 
     private static bool? ReadBool(IReadOnlyDictionary<string, object?> metadata, string key)
@@ -444,7 +939,16 @@ public sealed record VideoOptimiserPlan(
     bool RequireSizeReduction,
     int GifMaxWidth,
     int GifFps,
-    int GifQuality)
+    int GifQuality,
+    VideoEncoderSelection Encoder,
+    VideoEncoderSelection? SoftwareFallback,
+    IReadOnlyList<string> VideoCodecArguments,
+    AudioPlan Audio,
+    FrameDecimationPlan FrameDecimation,
+    AnimatedExportFormat AnimatedFormat,
+    bool UseTwoPass,
+    int? LookaheadFrames,
+    bool SceneCutAware)
 {
     public bool RequiresFilters => Filters.Count > 0;
 }
@@ -453,7 +957,7 @@ public interface IVideoToolchain
 {
     Task<ToolchainResult> TranscodeAsync(VideoOptimiserPlan plan, FilePath tempOutput, OptimiserExecutionContext context, CancellationToken cancellationToken);
 
-    Task<ToolchainResult> ConvertToGifAsync(VideoOptimiserPlan plan, FilePath tempOutput, OptimiserExecutionContext context, CancellationToken cancellationToken);
+    Task<ToolchainResult> ConvertToAnimatedAsync(VideoOptimiserPlan plan, FilePath tempOutput, OptimiserExecutionContext context, CancellationToken cancellationToken);
 }
 
 public sealed record ToolchainResult(bool Success, string? ErrorMessage = null)
@@ -477,60 +981,113 @@ internal sealed class ExternalVideoToolchain : IVideoToolchain
         return await RunTranscodeAsync(plan, tempOutput, context, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<ToolchainResult> ConvertToGifAsync(VideoOptimiserPlan plan, FilePath tempOutput, OptimiserExecutionContext context, CancellationToken cancellationToken)
+    public async Task<ToolchainResult> ConvertToAnimatedAsync(VideoOptimiserPlan plan, FilePath tempOutput, OptimiserExecutionContext context, CancellationToken cancellationToken)
     {
-        var framesDirectory = CreateTempDirectory("clop-gif-frames");
-        try
+        return plan.AnimatedFormat switch
         {
-            var framePattern = Path.Combine(framesDirectory.Value, "frame%05d.png");
-            var extractArgs = BuildGifExtractionArgs(plan, framePattern);
-            var tracker = new FfmpegProgressTracker("Extracting frames");
-            var ffmpegResult = await RunProcessAsync(_options.FfmpegPath, extractArgs, context, cancellationToken, line => tracker.Process(line, context)).ConfigureAwait(false);
-            if (!ffmpegResult.Success)
-            {
-                return ToolchainResult.Failure(ffmpegResult.ErrorMessage ?? "ffmpeg frame extraction failed");
-            }
-
-            var frames = Directory.EnumerateFiles(framesDirectory.Value, "frame*.png")
-                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            if (frames.Count == 0)
-            {
-                return ToolchainResult.Failure("Frame extraction produced no files");
-            }
-
-            var gifskiArgs = BuildGifskiArgs(plan, tempOutput, frames);
-            var gifskiTracker = new GifskiProgressTracker(frames.Count);
-            return await RunProcessAsync(_options.GifskiPath!, gifskiArgs, context, cancellationToken, line => gifskiTracker.Process(line, context)).ConfigureAwait(false);
-        }
-        finally
-        {
-            TryDeleteDirectory(framesDirectory);
-        }
+            AnimatedExportFormat.Gif => await ConvertToGifViaPaletteAsync(plan, tempOutput, context, cancellationToken).ConfigureAwait(false),
+            AnimatedExportFormat.Apng => await ConvertToApngAsync(plan, tempOutput, context, cancellationToken).ConfigureAwait(false),
+            AnimatedExportFormat.AnimatedWebp => await ConvertToWebpAsync(plan, tempOutput, context, cancellationToken).ConfigureAwait(false),
+            _ => ToolchainResult.Failure("Unsupported animated format")
+        };
     }
 
     private async Task<ToolchainResult> RunTranscodeAsync(VideoOptimiserPlan plan, FilePath tempOutput, OptimiserExecutionContext context, CancellationToken cancellationToken)
     {
         var tracker = new FfmpegProgressTracker("Encoding");
-        var args = BuildTranscodeArguments(plan, tempOutput, plan.UseHardwareAcceleration);
+
+        if (plan.UseTwoPass)
+        {
+            var firstPassOutput = FilePath.TempFile("clop-pass", ".tmp", addUniqueSuffix: true);
+            var passLogBase = Path.Combine(Path.GetTempPath(), $"clop-pass-{Guid.NewGuid():N}");
+
+            try
+            {
+                var firstPassArgs = BuildTranscodeArguments(plan, firstPassOutput, includeAudio: false);
+                var firstInsertIndex = firstPassArgs.IndexOf("-progress");
+                if (firstInsertIndex < 0)
+                {
+                    firstInsertIndex = firstPassArgs.Count - 1;
+                }
+                firstPassArgs.Insert(firstInsertIndex, "-pass");
+                firstPassArgs.Insert(firstInsertIndex + 1, "1");
+                firstPassArgs.Insert(firstInsertIndex + 2, "-passlogfile");
+                firstPassArgs.Insert(firstInsertIndex + 3, passLogBase);
+
+                var firstResult = await RunProcessAsync(_options.FfmpegPath, firstPassArgs, context, cancellationToken, line => tracker.Process(line, context)).ConfigureAwait(false);
+                TryDelete(firstPassOutput);
+
+                if (!firstResult.Success)
+                {
+                    CleanupPassLogs(passLogBase);
+                    return firstResult;
+                }
+
+                var secondPassArgs = BuildTranscodeArguments(plan, tempOutput, includeAudio: true);
+                var secondInsertIndex = secondPassArgs.IndexOf("-progress");
+                if (secondInsertIndex < 0)
+                {
+                    secondInsertIndex = secondPassArgs.Count - 1;
+                }
+                secondPassArgs.Insert(secondInsertIndex, "-pass");
+                secondPassArgs.Insert(secondInsertIndex + 1, "2");
+                secondPassArgs.Insert(secondInsertIndex + 2, "-passlogfile");
+                secondPassArgs.Insert(secondInsertIndex + 3, passLogBase);
+
+                var secondResult = await RunProcessAsync(_options.FfmpegPath, secondPassArgs, context, cancellationToken, line => tracker.Process(line, context)).ConfigureAwait(false);
+                CleanupPassLogs(passLogBase);
+
+                if (secondResult.Success)
+                {
+                    return secondResult;
+                }
+
+                return await TrySoftwareFallbackAsync(plan, tempOutput, context, cancellationToken, tracker, secondResult).ConfigureAwait(false);
+            }
+            finally
+            {
+                TryDelete(firstPassOutput);
+            }
+        }
+
+        var args = BuildTranscodeArguments(plan, tempOutput, includeAudio: true);
         var result = await RunProcessAsync(_options.FfmpegPath, args, context, cancellationToken, line => tracker.Process(line, context)).ConfigureAwait(false);
 
-        if (result.Success || !plan.UseHardwareAcceleration)
+        if (result.Success)
         {
             return result;
+        }
+
+        return await TrySoftwareFallbackAsync(plan, tempOutput, context, cancellationToken, tracker, result).ConfigureAwait(false);
+    }
+
+    private async Task<ToolchainResult> TrySoftwareFallbackAsync(VideoOptimiserPlan plan, FilePath tempOutput, OptimiserExecutionContext context, CancellationToken cancellationToken, FfmpegProgressTracker tracker, ToolchainResult lastResult)
+    {
+        if (plan.SoftwareFallback is null)
+        {
+            return lastResult;
         }
 
         Log.Info("Hardware video encoder failed; falling back to software encoder.");
         context.ReportProgress(5, "Switching to software encoder");
 
-        SafeDelete(tempOutput);
+        TryDelete(tempOutput);
 
-        var softwarePlan = plan with { UseHardwareAcceleration = false };
-        var softwareArgs = BuildTranscodeArguments(softwarePlan, tempOutput, useHardwareAcceleration: false);
-        return await RunProcessAsync(_options.FfmpegPath, softwareArgs, context, cancellationToken, line => tracker.Process(line, context)).ConfigureAwait(false);
+        var fallbackArgs = VideoOptimiser.BuildVideoCodecArguments(_options, plan.SoftwareFallback, plan.AggressiveQuality, plan.LookaheadFrames);
+        var fallbackPlan = plan with
+        {
+            Encoder = plan.SoftwareFallback,
+            SoftwareFallback = null,
+            UseTwoPass = false,
+            UseHardwareAcceleration = plan.SoftwareFallback.UseHardwareEncoder,
+            VideoCodecArguments = fallbackArgs
+        };
+
+        var args = BuildTranscodeArguments(fallbackPlan, tempOutput, includeAudio: true);
+        return await RunProcessAsync(_options.FfmpegPath, args, context, cancellationToken, line => tracker.Process(line, context)).ConfigureAwait(false);
     }
 
-    private static void SafeDelete(FilePath path)
+    private static void TryDelete(FilePath path)
     {
         try
         {
@@ -545,7 +1102,34 @@ internal sealed class ExternalVideoToolchain : IVideoToolchain
         }
     }
 
-    private IReadOnlyList<string> BuildTranscodeArguments(VideoOptimiserPlan plan, FilePath output, bool useHardwareAcceleration)
+    private static void CleanupPassLogs(string passLogBase)
+    {
+        try
+        {
+            var directory = Path.GetDirectoryName(passLogBase) ?? Path.GetTempPath();
+            var prefix = Path.GetFileName(passLogBase);
+            if (Directory.Exists(directory))
+            {
+                foreach (var file in Directory.EnumerateFiles(directory, $"{prefix}*"))
+                {
+                    try
+                    {
+                        File.Delete(file);
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // best effort cleanup
+        }
+    }
+
+    private List<string> BuildTranscodeArguments(VideoOptimiserPlan plan, FilePath output, bool includeAudio)
     {
         var args = new List<string>
         {
@@ -559,100 +1143,140 @@ internal sealed class ExternalVideoToolchain : IVideoToolchain
             args.Add(string.Join(',', plan.Filters));
         }
 
-        args.AddRange(BuildCodecArguments(plan, useHardwareAcceleration));
+        args.AddRange(plan.VideoCodecArguments);
 
-        if (plan.RemoveAudio)
+        args.AddRange(new[] { "-map", "0:v" });
+
+        if (includeAudio)
         {
-            args.Add("-an");
+            AppendAudioArguments(plan, args);
         }
         else
         {
-            args.AddRange(new[] { "-c:a", "copy", "-map", "0:v", "-map", "0:a?" });
+            args.Add("-an");
         }
 
         args.AddRange(new[] { "-movflags", "+faststart", "-progress", "pipe:2", "-nostats", "-hide_banner", "-stats_period", "0.2", output.Value });
         return args;
     }
 
-    private IReadOnlyList<string> BuildCodecArguments(VideoOptimiserPlan plan, bool useHardwareAcceleration)
+    private static void AppendAudioArguments(VideoOptimiserPlan plan, List<string> args)
     {
-        if (useHardwareAcceleration)
+        if (plan.Audio.RemoveAudio)
         {
-            return new[]
-            {
-                "-hwaccel", _options.HardwareAccelerationDevice,
-                "-c:v", _options.HardwareEncoder,
-                "-cq", _options.HardwareQuality.ToInvariantString(),
-                "-b:v", "0"
-            };
+            args.Add("-an");
+            return;
         }
 
-        var preset = plan.AggressiveQuality ? "slower" : "faster";
-        var crf = plan.AggressiveQuality ? Math.Max(18, _options.SoftwareCrf - 4) : _options.SoftwareCrf;
-        return new[]
+        if (plan.Audio.CopyStream)
         {
-            "-c:v", _options.SoftwareEncoder,
-            "-preset", preset,
-            "-crf", crf.ToInvariantString(),
-            "-pix_fmt", "yuv420p"
-        };
+            args.AddRange(new[] { "-c:a", "copy", "-map", "0:a?" });
+            return;
+        }
+
+        var encoder = plan.Audio.Encoder ?? "aac";
+        args.AddRange(new[] { "-c:a", encoder });
+
+        if (plan.Audio.BitrateKbps.HasValue)
+        {
+            args.Add("-b:a");
+            args.Add($"{plan.Audio.BitrateKbps.Value}k");
+        }
+
+        if (plan.Audio.Channels.HasValue)
+        {
+            args.Add("-ac");
+            args.Add(plan.Audio.Channels.Value.ToInvariantString());
+        }
+
+        if (plan.Audio.NormalizeLoudness)
+        {
+            var profile = plan.Audio.Loudness;
+            args.Add("-af");
+            args.Add($"loudnorm=I={profile.Integrated.ToInvariantString()}:TP={profile.TruePeak.ToInvariantString()}:LRA={profile.LoudnessRange.ToInvariantString()}:print_format=summary");
+        }
+
+        args.AddRange(new[] { "-map", "0:a?" });
     }
 
-    private IReadOnlyList<string> BuildGifExtractionArgs(VideoOptimiserPlan plan, string framePattern)
+    private async Task<ToolchainResult> ConvertToGifViaPaletteAsync(VideoOptimiserPlan plan, FilePath tempOutput, OptimiserExecutionContext context, CancellationToken cancellationToken)
     {
-        var args = new List<string>
-        {
-            "-y",
-            "-i", plan.SourcePath.Value
-        };
+        var tracker = new FfmpegProgressTracker("Encoding GIF");
+        var filterGraph = BuildGifFilterGraph(plan);
+        var args = new List<string> { "-y", "-i", plan.SourcePath.Value, "-vf", filterGraph, "-loop", "0", "-progress", "pipe:2", "-nostats", "-hide_banner", "-stats_period", "0.2", tempOutput.Value };
+        return await RunProcessAsync(_options.FfmpegPath, args, context, cancellationToken, line => tracker.Process(line, context)).ConfigureAwait(false);
+    }
 
+    private async Task<ToolchainResult> ConvertToApngAsync(VideoOptimiserPlan plan, FilePath tempOutput, OptimiserExecutionContext context, CancellationToken cancellationToken)
+    {
+        var tracker = new FfmpegProgressTracker("Encoding APNG");
+        var filter = BuildAnimatedFilterChain(plan);
+        var args = new List<string> { "-y", "-i", plan.SourcePath.Value };
+        if (!string.IsNullOrWhiteSpace(filter))
+        {
+            args.AddRange(new[] { "-vf", filter });
+        }
+        args.AddRange(new[] { "-plays", "0", "-progress", "pipe:2", "-nostats", "-hide_banner", "-stats_period", "0.2", tempOutput.Value });
+        return await RunProcessAsync(_options.FfmpegPath, args, context, cancellationToken, line => tracker.Process(line, context)).ConfigureAwait(false);
+    }
+
+    private async Task<ToolchainResult> ConvertToWebpAsync(VideoOptimiserPlan plan, FilePath tempOutput, OptimiserExecutionContext context, CancellationToken cancellationToken)
+    {
+        var tracker = new FfmpegProgressTracker("Encoding WebP");
+        var filter = BuildAnimatedFilterChain(plan);
+        var args = new List<string> { "-y", "-i", plan.SourcePath.Value };
+        if (!string.IsNullOrWhiteSpace(filter))
+        {
+            args.AddRange(new[] { "-vf", filter });
+        }
+        args.AddRange(new[]
+        {
+            "-c:v", "libwebp_anim",
+            "-loop", "0",
+            "-quality", plan.GifQuality.ToInvariantString(),
+            "-compression_level", "6",
+            "-progress", "pipe:2",
+            "-nostats",
+            "-hide_banner",
+            "-stats_period", "0.2",
+            tempOutput.Value
+        });
+        return await RunProcessAsync(_options.FfmpegPath, args, context, cancellationToken, line => tracker.Process(line, context)).ConfigureAwait(false);
+    }
+
+    private static string BuildGifFilterGraph(VideoOptimiserPlan plan)
+    {
+        var baseFilters = BuildBaseAnimationFilters(plan);
+        var chain = baseFilters.Count > 0 ? string.Join(',', baseFilters) + "," : string.Empty;
+        return chain + "split[s0][s1];[s0]palettegen=stats_mode=full[p];[s1][p]paletteuse=dither=bayer";
+    }
+
+    private static string BuildAnimatedFilterChain(VideoOptimiserPlan plan)
+    {
+        var filters = BuildBaseAnimationFilters(plan);
+        return filters.Count == 0 ? string.Empty : string.Join(',', filters);
+    }
+
+    private static List<string> BuildBaseAnimationFilters(VideoOptimiserPlan plan)
+    {
         var filters = new List<string>();
-        filters.Add($"scale=w={plan.GifMaxWidth}:h=-2:force_original_aspect_ratio=decrease");
-        filters.Add($"fps={plan.GifFps}");
-        if (plan.RequiresFilters)
+        if (plan.Filters.Count > 0)
         {
-            filters.InsertRange(0, plan.Filters);
+            filters.AddRange(plan.Filters);
         }
 
-        args.Add("-vf");
-        args.Add(string.Join(',', filters));
-        args.AddRange(new[] { "-progress", "pipe:2", "-nostats", "-hide_banner", "-stats_period", "0.2", framePattern });
-        return args;
-    }
-
-    private IReadOnlyList<string> BuildGifskiArgs(VideoOptimiserPlan plan, FilePath output, IReadOnlyCollection<string> frames)
-    {
-        var args = new List<string>
+        var scaleFilter = $"scale=w={plan.GifMaxWidth}:h=-2:force_original_aspect_ratio=decrease";
+        if (!filters.Any(f => f.StartsWith("scale=", StringComparison.OrdinalIgnoreCase)))
         {
-            "-o", output.Value,
-            "--width", plan.GifMaxWidth.ToInvariantString(),
-            "--fps", plan.GifFps.ToInvariantString(),
-            "--quality", plan.GifQuality.ToInvariantString()
-        };
-        args.AddRange(frames);
-        return args;
-    }
-
-    private static FilePath CreateTempDirectory(string prefix)
-    {
-        var path = Path.Combine(Path.GetTempPath(), $"{prefix}-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(path);
-        return FilePath.From(path);
-    }
-
-    private static void TryDeleteDirectory(FilePath directory)
-    {
-        try
-        {
-            if (Directory.Exists(directory.Value))
-            {
-                Directory.Delete(directory.Value, recursive: true);
-            }
+            filters.Add(scaleFilter);
         }
-        catch
+
+        var fpsFilter = $"fps={plan.GifFps}";
+        if (!filters.Any(f => f.StartsWith("fps=", StringComparison.OrdinalIgnoreCase)))
         {
-            // cleanup best effort
+            filters.Add(fpsFilter);
         }
+        return filters;
     }
 
     private static async Task<ToolchainResult> RunProcessAsync(string executable, IReadOnlyList<string> arguments, OptimiserExecutionContext context, CancellationToken cancellationToken, Action<string>? progressCallback)
@@ -799,36 +1423,4 @@ internal sealed class ExternalVideoToolchain : IVideoToolchain
         }
     }
 
-    private sealed class GifskiProgressTracker
-    {
-        private static readonly Regex FrameRegex = new(@"Frame\s+(\d+)\s+/\s+(\d+)", RegexOptions.Compiled | RegexOptions.CultureInvariant);
-        private readonly int _totalFrames;
-
-        public GifskiProgressTracker(int totalFrames)
-        {
-            _totalFrames = Math.Max(1, totalFrames);
-        }
-
-        public void Process(string line, OptimiserExecutionContext context)
-        {
-            if (string.IsNullOrWhiteSpace(line))
-            {
-                return;
-            }
-
-            var match = FrameRegex.Match(line);
-            if (!match.Success)
-            {
-                return;
-            }
-
-            if (!int.TryParse(match.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var frame))
-            {
-                return;
-            }
-
-            var percent = Math.Clamp(frame / (double)_totalFrames * 100d, 0d, 99d);
-            context.ReportProgress(percent, $"GIF frame {frame} of {_totalFrames}");
-        }
-    }
 }
