@@ -17,6 +17,23 @@
 
             <Border Margin="0,24,0,0" Padding="20" Background="{DynamicResource Brush.SurfaceBackground}" BorderBrush="{DynamicResource Brush.SurfaceBorder}" BorderThickness="1" CornerRadius="12">
                 <StackPanel>
+                    <TextBlock Text="{loc:Loc settings.section.appearance}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Brush.PrimaryText}"/>
+                    <StackPanel Margin="0,12,0,0">
+                        <TextBlock Text="{loc:Loc settings.theme.mode}" FontWeight="SemiBold" Foreground="{DynamicResource Brush.PrimaryText}"/>
+                        <ComboBox Margin="0,6,0,0"
+                                  ItemsSource="{Binding ThemeOptions}"
+                                  SelectedItem="{Binding SelectedThemeOption}"
+                                  DisplayMemberPath="DisplayName"
+                                  AutomationProperties.Name="{loc:Loc settings.theme.mode}"
+                                  Background="{DynamicResource Brush.FieldBackground}"
+                                  BorderBrush="{DynamicResource Brush.FieldBorder}"
+                                  Foreground="{DynamicResource Brush.FieldForeground}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Margin="0,16,0,0" Padding="20" Background="{DynamicResource Brush.SurfaceBackground}" BorderBrush="{DynamicResource Brush.SurfaceBorder}" BorderThickness="1" CornerRadius="12">
+                <StackPanel>
                     <TextBlock Text="{loc:Loc settings.section.floatingHud}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Brush.PrimaryText}"/>
                     <CheckBox Content="{loc:Loc settings.floatingHud.show}" Margin="0,12,0,0" IsChecked="{Binding EnableFloatingResults}"/>
                     <CheckBox Content="{loc:Loc settings.floatingHud.autoHide}" Margin="0,8,0,0" IsChecked="{Binding AutoHideFloatingResults}"/>
@@ -25,10 +42,30 @@
                         <TextBox Width="60"
                                  Margin="8,0,0,0"
                                  Text="{Binding AutoHideFloatingResultsAfter, UpdateSourceTrigger=PropertyChanged}"
+                                 Background="{DynamicResource Brush.FieldBackground}"
+                                 BorderBrush="{DynamicResource Brush.FieldBorder}"
+                                 Foreground="{DynamicResource Brush.FieldForeground}"
                                  AutomationProperties.LabeledBy="{Binding ElementName=FloatingHudHideAfterLabel}"
                                  AutomationProperties.HelpText="{loc:Loc settings.floatingHud.hideAfter.help}"
                                  AutomationProperties.Name="{loc:Loc settings.autohide.seconds.accessible}"/>
                         <TextBlock Text="{loc:Loc settings.floatingHud.hideAfterSuffix}" Margin="8,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource Brush.SecondaryText}"/>
+                    </StackPanel>
+                    <StackPanel Margin="0,16,0,0">
+                        <TextBlock Text="{loc:Loc settings.floatingHud.pinHeading}" FontWeight="SemiBold" Foreground="{DynamicResource Brush.PrimaryText}"/>
+                        <TextBlock Text="{loc:Loc settings.floatingHud.pinDescription}" FontSize="12" Foreground="{DynamicResource Brush.SecondaryText}" Margin="0,4,0,12" TextWrapping="Wrap"/>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="{loc:Loc settings.floatingHud.choosePlacement}"
+                                    Command="{Binding BeginHudPlacementCommand}"
+                                    Padding="18,6"/>
+                            <Button Content="{loc:Loc settings.floatingHud.clearPin}"
+                                    Command="{Binding ClearHudPlacementCommand}"
+                                    Margin="8,0,0,0"
+                                    Padding="18,6"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding FloatingHudPlacementStatus}"
+                                   Margin="0,8,0,0"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource Brush.SecondaryText}"/>
                     </StackPanel>
                 </StackPanel>
             </Border>

@@ -1,5 +1,6 @@
 using System;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 
@@ -8,6 +9,19 @@ namespace ClopWindows.App.Views.FloatingHud;
 public partial class FloatingHudWindow : Window
 {
     private const double MarginFromScreen = 24d;
+    public static readonly DependencyProperty IsPlacementModeProperty = DependencyProperty.Register(
+        nameof(IsPlacementMode), typeof(bool), typeof(FloatingHudWindow), new PropertyMetadata(false));
+
+    public event EventHandler? PlacementConfirmed;
+    public event EventHandler? PlacementCancelled;
+
+    public bool IsPlacementMode
+    {
+        get => (bool)GetValue(IsPlacementModeProperty);
+        set => SetValue(IsPlacementModeProperty, value);
+    }
+
+    public bool IsPinnedPosition { get; private set; }
 
     public FloatingHudWindow()
     {
@@ -17,22 +31,46 @@ public partial class FloatingHudWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        MoveToTopRight();
+        if (!IsPinnedPosition)
+        {
+            MoveToTopRight();
+        }
     }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
     {
-        MoveToTopRight();
+        if (!IsPinnedPosition && !IsPlacementMode)
+        {
+            MoveToTopRight();
+        }
     }
 
     public void MoveToTopRight()
     {
+        if (IsPlacementMode)
+        {
+            return;
+        }
+
         var workArea = SystemParameters.WorkArea;
         var width = ActualWidth > 0 ? ActualWidth : Width;
         var height = ActualHeight > 0 ? ActualHeight : Height;
 
         Left = workArea.Right - width - MarginFromScreen;
         Top = workArea.Top + MarginFromScreen;
+        IsPinnedPosition = false;
+    }
+
+    public void MoveTo(double left, double top)
+    {
+        IsPinnedPosition = true;
+        Left = left;
+        Top = top;
+    }
+
+    public void ClearPinnedPosition()
+    {
+        IsPinnedPosition = false;
     }
 
     public void BringToFront()
@@ -64,5 +102,46 @@ public partial class FloatingHudWindow : Window
 
         [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
         public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, int[] attrValue, int attrSize);
+    }
+
+    public void EnterPlacementMode()
+    {
+        IsPlacementMode = true;
+        BringToFront();
+    }
+
+    public void ExitPlacementMode()
+    {
+        IsPlacementMode = false;
+    }
+
+    private void OnHudMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!IsPlacementMode)
+        {
+            return;
+        }
+
+        if (e.ChangedButton == MouseButton.Left)
+        {
+            try
+            {
+                DragMove();
+            }
+            catch
+            {
+                // Ignore drag errors caused by rapid clicks.
+            }
+        }
+    }
+
+    private void OnPlacementConfirmClicked(object sender, RoutedEventArgs e)
+    {
+        PlacementConfirmed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnPlacementCancelClicked(object sender, RoutedEventArgs e)
+    {
+        PlacementCancelled?.Invoke(this, EventArgs.Empty);
     }
 }

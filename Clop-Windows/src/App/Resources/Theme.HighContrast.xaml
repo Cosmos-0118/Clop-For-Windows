@@ -7,6 +7,8 @@
     <SolidColorBrush x:Key="Brush.NavigationSubtitle" Color="{x:Static SystemColors.GrayTextColor}" />
     <SolidColorBrush x:Key="Brush.NavigationItemSelectedBackground" Color="{x:Static SystemColors.HighlightColor}" />
     <SolidColorBrush x:Key="Brush.NavigationItemHoverBackground" Color="{x:Static SystemColors.HotTrackColor}" />
+    <SolidColorBrush x:Key="Brush.NavigationIndicator" Color="{x:Static SystemColors.HighlightColor}" />
+    <SolidColorBrush x:Key="Brush.NavigationAccentGlow" Color="{x:Static SystemColors.HighlightColor}" />
     <SolidColorBrush x:Key="Brush.ContentBackground" Color="{x:Static SystemColors.WindowColor}" />
     <SolidColorBrush x:Key="Brush.SurfaceBackground" Color="{x:Static SystemColors.WindowColor}" />
     <SolidColorBrush x:Key="Brush.SurfaceSecondaryBackground" Color="{x:Static SystemColors.ControlColor}" />
@@ -18,6 +20,10 @@
     <SolidColorBrush x:Key="Brush.PlaceholderText" Color="{x:Static SystemColors.GrayTextColor}" />
     <SolidColorBrush x:Key="Brush.CardBackground" Color="{x:Static SystemColors.WindowColor}" />
     <SolidColorBrush x:Key="Brush.CardBorder" Color="{x:Static SystemColors.WindowTextColor}" />
+    <SolidColorBrush x:Key="Brush.FieldBackground" Color="{x:Static SystemColors.WindowColor}" />
+    <SolidColorBrush x:Key="Brush.FieldBorder" Color="{x:Static SystemColors.WindowTextColor}" />
+    <SolidColorBrush x:Key="Brush.FieldForeground" Color="{x:Static SystemColors.WindowTextColor}" />
+    <SolidColorBrush x:Key="Brush.FieldPlaceholder" Color="{x:Static SystemColors.GrayTextColor}" />
     <SolidColorBrush x:Key="Brush.PrimaryButtonBackground" Color="{x:Static SystemColors.HighlightColor}" />
     <SolidColorBrush x:Key="Brush.PrimaryButtonForeground" Color="{x:Static SystemColors.HighlightTextColor}" />
     <SolidColorBrush x:Key="Brush.HudBackground" Color="{x:Static SystemColors.WindowColor}" />

@@ -88,6 +88,9 @@ public static class SettingsRegistry
     public static readonly SettingKey<int> AutoHideFloatingResultsAfter = Int("autoHideFloatingResultsAfter", 30);
     public static readonly SettingKey<int> AutoHideClipboardResultAfter = Int("autoHideClipboardResultAfter", 3);
     public static readonly SettingKey<int> AutoClearCompactResultsAfter = Int("autoClearAllCompactResultsAfter", 120);
+    public static readonly SettingKey<bool> FloatingHudPinned = Bool("floatingHudPinned", false);
+    public static readonly SettingKey<double> FloatingHudPinnedLeft = new("floatingHudPinnedLeft", double.NaN);
+    public static readonly SettingKey<double> FloatingHudPinnedTop = new("floatingHudPinnedTop", double.NaN);
 
     public static readonly SettingKey<bool> AutoCopyToClipboard = Bool("autoCopyToClipboard", true);
     public static readonly SettingKey<bool> CliInstalled = Bool("cliInstalled", true);
@@ -109,6 +112,7 @@ public static class SettingsRegistry
     public static readonly SettingKey<bool> PauseAutomaticOptimisations = Bool("pauseAutomaticOptimisations", false);
     public static readonly SettingKey<bool> SyncSettingsCloud = Bool("syncSettingsCloud", true);
     public static readonly SettingKey<bool> AllowClopToAppearInScreenshots = Bool("allowClopToAppearInScreenshots", false);
+    public static readonly SettingKey<AppThemeMode> AppThemeMode = new("appThemeMode", global::ClopWindows.Core.Settings.AppThemeMode.FollowSystem);
 
     public static readonly ImmutableArray<ISettingKey> AllKeys = ImmutableArray.Create<ISettingKey>(
         FinishedOnboarding,
@@ -177,6 +181,9 @@ public static class SettingsRegistry
         AutoHideFloatingResultsAfter,
         AutoHideClipboardResultAfter,
         AutoClearCompactResultsAfter,
+        FloatingHudPinned,
+        FloatingHudPinnedLeft,
+        FloatingHudPinnedTop,
         AutoCopyToClipboard,
         CliInstalled,
         EnableCrossAppAutomation,
@@ -194,7 +201,8 @@ public static class SettingsRegistry
         SavedCropSizes,
         PauseAutomaticOptimisations,
         SyncSettingsCloud,
-        AllowClopToAppearInScreenshots
+        AllowClopToAppearInScreenshots,
+        AppThemeMode
     );
 
     private static SettingKey<bool> Bool(string name, bool defaultValue) => new(name, defaultValue);

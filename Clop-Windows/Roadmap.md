@@ -99,12 +99,6 @@ Clop-Windows/
   - Documented drop-zone pointer gestures (Alt to reveal overlay, Ctrl for preset zones, right-click for HUD context menus) alongside keyboard coverage in `docs/architecture.md`.
 - [x] **P4.4 – Localization & accessibility**: Ensure UI texts reuse the macOS strings and pass Windows accessibility checks (High Contrast, screen readers).
 
-### Phase 5 – Telemetry & Packaging
-
-- [ ] **P5.1 – Telemetry**: Integrate Sentry or Azure App Center equivalent, mirroring events emitted in `ClopApp.swift`. Offer opt-in controls consistent with macOS preferences.
-- [ ] **P5.2 – Installers & updates**: Produce MSIX/App Installer packages, optional winget manifest, and scriptable install (PowerShell). Include automatic update strategy akin to Sparkle.
-- [ ] **P5.3 – QA matrix**: Draft test checklist (multi-monitor, HDR, touch, battery saver, offline). Automate core scenarios via WinAppDriver / Playwright where feasible.
-
 ### Phase 9 – Image Optimiser 2.0
 
 - [x] **P9.1 – Switch core processing to ImageSharp or WebP/AVIF-native libraries**: Replace the `System.Drawing` pipeline in `Core/Optimizers/ImageOptimiser.cs` with ImageSharp + libvips bindings to unlock SIMD, better colour management, and 16-bit/channel handling. Preserve retina/resolution logic from macOS `Images.swift`.
@@ -143,11 +137,18 @@ Clop-Windows/
 
 Map these into `Brush.*` resources with light/dark variants and ensure High Contrast theme inherits correctly.
 
-- [ ] **P13.1 – Design system audit**: Define a colour token set (Black Onyx, Neon Green, Signal Red, Ember Orange, Royal Purple) and contrast rules. Update `Theme.Default.xaml` and add `Theme.Dark.xaml`/`Theme.HighSaturation.xaml` so users can toggle vibrant themes.
-- [ ] **P13.2 – Fluent/WinUI visual layer**: Swap heavy WPF gradients for Composition/Acrylic with `Microsoft.UI.Composition` interop (or migrate shell to WinUI 3 if feasible). Align animations with macOS `FloatingResult` transitions.
-- [ ] **P13.3 – Layout & typography polish**: Adopt responsive grids, dynamic spacing, and typography scale from macOS (SF Pro equivalents → Segoe Fluent, Inter). Revisit `FloatingHud` to better match macOS translucency and depth.
-- [ ] **P13.4 – Accessibility & localisation sweep**: Revalidate contrast, keyboard focus cues, and screen reader labels in the new theme. Sync translations with macOS `Localization/` strings and add RTL testing matrix.
-- [ ] **P13.5 – Brand collateral refresh**: Update `assets/` with new screenshots, hero images, and tray icons that reflect the updated colour direction. Document usage guidelines in `docs/brand.md`.
+- [x] **P13.1 – Design system audit**: Define a colour + typography token set (Black Onyx, Neon Green, Signal Red, Ember Orange, Royal Purple) and contrast rules. Update `Theme.Default.xaml` and add `Theme.Dark.xaml`/`Theme.HighSaturation.xaml` so users can toggle vibrant themes entirely within WPF resource dictionaries.
+- [x] **P13.2 – WPF visual layer**: Replace the WinUI harness with a WPF-first composition strategy (Mica/Acrylic backdrops via `SystemBackdrop`, `TransitioningContentControl` animations, HUD blur shaders). Ensure every window pulls brushes from the shared token dictionaries and wire a debug-only style guide page for manual inspection.
+- [x] **P13.3 – Layout & typography polish**: Adopt responsive grids, dynamic spacing, and typography scale from macOS (SF Pro equivalents → Segoe Fluent, Inter). Revisit `FloatingHud` to better match macOS translucency and depth using WPF MVVM patterns.
+- [x] **P13.4 – Accessibility & localisation sweep**: Revalidate contrast, keyboard focus cues, and screen reader labels in the new theme. Sync translations with macOS `Localization/` strings and add RTL testing matrix.
+- [x] **P13.5 – Brand collateral refresh**: Update `assets/` with new screenshots, hero images, and tray icons that reflect the updated colour direction and WPF visuals. Document usage guidelines in `docs/brand.md`.
+
+
+### Phase 5 – Telemetry & Packaging
+
+- [ ] **P5.1 – Telemetry**: Integrate Sentry or Azure App Center equivalent, mirroring events emitted in `ClopApp.swift`. Offer opt-in controls consistent with macOS preferences.
+- [ ] **P5.2 – Installers & updates**: Produce MSIX/App Installer packages, optional winget manifest, and scriptable install (PowerShell). Include automatic update strategy akin to Sparkle.
+- [ ] **P5.3 – QA matrix**: Draft test checklist (multi-monitor, HDR, touch, battery saver, offline). Automate core scenarios via WinAppDriver / Playwright where feasible.
 
 ### Phase 14 – Delivery, QA, and Observability
 

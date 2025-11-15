@@ -24,6 +24,7 @@ public sealed class FloatingHudController : IDisposable
 
     private bool _isInitialized;
     private bool _isDisposed;
+    private bool _isPlacementMode;
 
     public FloatingHudController(
         FloatingHudViewModel viewModel,
@@ -59,6 +60,7 @@ public sealed class FloatingHudController : IDisposable
             RegisterRequest(request);
         }
 
+        EnsureVisible();
         ApplyAutoHideSettings();
     }
 
@@ -66,6 +68,18 @@ public sealed class FloatingHudController : IDisposable
     {
         ThrowIfDisposed();
         EnsureVisible();
+    }
+
+    public void Hide()
+    {
+        ThrowIfDisposed();
+        Dispatch(() =>
+        {
+            if (_window.IsVisible)
+            {
+                _window.Hide();
+            }
+        });
     }
 
     public void TrackRequest(OptimisationRequest request)
@@ -80,15 +94,98 @@ public sealed class FloatingHudController : IDisposable
         });
     }
 
-    public void Hide()
+    public void BeginPlacementMode()
     {
+        ThrowIfDisposed();
         Dispatch(() =>
+        {
+            if (_isPlacementMode)
+            {
+                return;
+            }
+
+            _isPlacementMode = true;
+            EnsureVisible(forceShow: true);
+            _window.PlacementConfirmed += OnPlacementConfirmed;
+            _window.PlacementCancelled += OnPlacementCancelled;
+            _window.EnterPlacementMode();
+        });
+    }
+
+    public void ClearPinnedPlacement()
+    {
+        SettingsHost.Set(SettingsRegistry.FloatingHudPinned, false);
+        SettingsHost.Set(SettingsRegistry.FloatingHudPinnedLeft, double.NaN);
+        SettingsHost.Set(SettingsRegistry.FloatingHudPinnedTop, double.NaN);
+
+        Dispatch(() =>
+        {
+            _window.ClearPinnedPosition();
+            if (!_window.IsPlacementMode)
+            {
+                PositionWindow();
+            }
+        });
+    }
+
+    private void EnsureVisible(bool forceShow = false)
+    {
+        if (!SettingsHost.Get(SettingsRegistry.EnableFloatingResults))
         {
             if (_window.IsVisible)
             {
                 _window.Hide();
             }
-        });
+
+            return;
+        }
+
+        if (!_viewModel.HasResults && !forceShow && !_window.IsPlacementMode)
+        {
+            return;
+        }
+
+        if (!_window.IsVisible)
+        {
+            _window.Show();
+        }
+
+        PositionWindow();
+        _window.BringToFront();
+    }
+
+    private void PositionWindow()
+    {
+        if (_window.IsPlacementMode)
+        {
+            return;
+        }
+
+        if (TryApplyPinnedPosition())
+        {
+            return;
+        }
+
+        _window.ClearPinnedPosition();
+        _window.MoveToTopRight();
+    }
+
+    private bool TryApplyPinnedPosition()
+    {
+        if (!SettingsHost.Get(SettingsRegistry.FloatingHudPinned))
+        {
+            return false;
+        }
+
+        var left = SettingsHost.Get(SettingsRegistry.FloatingHudPinnedLeft);
+        var top = SettingsHost.Get(SettingsRegistry.FloatingHudPinnedTop);
+        if (double.IsNaN(left) || double.IsNaN(top))
+        {
+            return false;
+        }
+
+        _window.MoveTo(left, top);
+        return true;
     }
 
     private void OnProgressChanged(object? sender, OptimisationProgressEventArgs e)
@@ -225,72 +322,6 @@ public sealed class FloatingHudController : IDisposable
         }
     }
 
-    private void EnsureVisible()
-    {
-        if (!SettingsHost.Get(SettingsRegistry.EnableFloatingResults))
-        {
-            if (_window.IsVisible)
-            {
-                _window.Hide();
-            }
-            return;
-        }
-
-        if (!_viewModel.HasResults)
-        {
-            return;
-        }
-
-        if (!_window.IsVisible)
-        {
-            _window.Show();
-        }
-
-        _window.MoveToTopRight();
-        _window.BringToFront();
-    }
-
-    private void Dispatch(Action action)
-    {
-        if (_window.Dispatcher.CheckAccess())
-        {
-            action();
-        }
-        else
-        {
-            _ = _window.Dispatcher.InvokeAsync(action, DispatcherPriority.Render);
-        }
-    }
-
-    private void ThrowIfDisposed()
-    {
-        if (_isDisposed)
-        {
-            throw new ObjectDisposedException(nameof(FloatingHudController));
-        }
-    }
-
-    public void Dispose()
-    {
-        if (_isDisposed)
-        {
-            return;
-        }
-
-        _isDisposed = true;
-        _coordinator.ProgressChanged -= OnProgressChanged;
-        _coordinator.RequestCompleted -= OnRequestCompleted;
-        _coordinator.RequestFailed -= OnRequestCompleted;
-        SettingsHost.SettingChanged -= OnSettingChanged;
-
-        foreach (var timer in _dismissTimers.Values)
-        {
-            timer.Stop();
-        }
-
-        _dismissTimers.Clear();
-    }
-
     private void OnSettingChanged(object? sender, SettingChangedEventArgs e)
     {
         if (string.Equals(e.Name, SettingsRegistry.EnableFloatingResults.Name, StringComparison.Ordinal))
@@ -315,6 +346,14 @@ public sealed class FloatingHudController : IDisposable
             string.Equals(e.Name, SettingsRegistry.AutoHideFloatingResultsAfter.Name, StringComparison.Ordinal))
         {
             Dispatch(ApplyAutoHideSettings);
+            return;
+        }
+
+        if (string.Equals(e.Name, SettingsRegistry.FloatingHudPinned.Name, StringComparison.Ordinal) ||
+            string.Equals(e.Name, SettingsRegistry.FloatingHudPinnedLeft.Name, StringComparison.Ordinal) ||
+            string.Equals(e.Name, SettingsRegistry.FloatingHudPinnedTop.Name, StringComparison.Ordinal))
+        {
+            Dispatch(PositionWindow);
         }
     }
 
@@ -340,7 +379,6 @@ public sealed class FloatingHudController : IDisposable
         }
     }
 
-    // Automatically hide finished results once the configured timeout elapses.
     private void ScheduleAutoDismiss(FloatingResultViewModel viewModel)
     {
         CancelDismissTimer(viewModel.RequestId);
@@ -382,5 +420,76 @@ public sealed class FloatingHudController : IDisposable
         {
             timer.Stop();
         }
+    }
+
+    private void OnPlacementConfirmed(object? sender, EventArgs e)
+    {
+        SettingsHost.Set(SettingsRegistry.FloatingHudPinnedLeft, _window.Left);
+        SettingsHost.Set(SettingsRegistry.FloatingHudPinnedTop, _window.Top);
+        SettingsHost.Set(SettingsRegistry.FloatingHudPinned, true);
+        EndPlacementMode();
+    }
+
+    private void OnPlacementCancelled(object? sender, EventArgs e)
+    {
+        EndPlacementMode();
+    }
+
+    private void EndPlacementMode()
+    {
+        _window.PlacementConfirmed -= OnPlacementConfirmed;
+        _window.PlacementCancelled -= OnPlacementCancelled;
+        _window.ExitPlacementMode();
+        _isPlacementMode = false;
+
+        if (!_viewModel.HasResults && SettingsHost.Get(SettingsRegistry.AutoHideFloatingResults))
+        {
+            _window.Hide();
+        }
+        else
+        {
+            PositionWindow();
+        }
+    }
+
+    private void Dispatch(Action action)
+    {
+        if (_window.Dispatcher.CheckAccess())
+        {
+            action();
+        }
+        else
+        {
+            _ = _window.Dispatcher.InvokeAsync(action, DispatcherPriority.Render);
+        }
+    }
+
+    private void ThrowIfDisposed()
+    {
+        if (_isDisposed)
+        {
+            throw new ObjectDisposedException(nameof(FloatingHudController));
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        _isDisposed = true;
+        _coordinator.ProgressChanged -= OnProgressChanged;
+        _coordinator.RequestCompleted -= OnRequestCompleted;
+        _coordinator.RequestFailed -= OnRequestCompleted;
+        SettingsHost.SettingChanged -= OnSettingChanged;
+
+        foreach (var timer in _dismissTimers.Values)
+        {
+            timer.Stop();
+        }
+
+        _dismissTimers.Clear();
     }
 }

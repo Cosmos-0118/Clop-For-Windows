@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using ClopWindows.App.Infrastructure;
+using ClopWindows.App.Localization;
+using ClopWindows.App.Services;
 using ClopWindows.Core.Settings;
 
 namespace ClopWindows.App.ViewModels;
@@ -23,14 +25,24 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     private bool _enableAutomaticPdfOptimisations;
     private bool _suppressStoreUpdates;
     private readonly Dictionary<ShortcutId, ShortcutPreferenceViewModel> _shortcutLookup;
+    private readonly FloatingHudController _hudController;
+    private ThemeOptionViewModel? _selectedThemeOption;
+    private bool _floatingHudPinned;
 
     public IReadOnlyList<ShortcutPreferenceViewModel> AppShortcutPreferences { get; }
     public IReadOnlyList<ShortcutPreferenceViewModel> GlobalShortcutPreferences { get; }
+    public IReadOnlyList<ThemeOptionViewModel> ThemeOptions { get; }
+    public RelayCommand BeginHudPlacementCommand { get; }
+    public RelayCommand ClearHudPlacementCommand { get; }
 
-    public SettingsViewModel()
+    public SettingsViewModel(FloatingHudController hudController)
     {
+        _hudController = hudController ?? throw new ArgumentNullException(nameof(hudController));
         SettingsHost.EnsureInitialized();
         ShortcutCatalog.Initialize();
+        BeginHudPlacementCommand = new RelayCommand(_ => BeginHudPlacement(), _ => EnableFloatingResults);
+        ClearHudPlacementCommand = new RelayCommand(_ => ClearHudPlacement(), _ => EnableFloatingResults && FloatingHudPinned);
+        ThemeOptions = new ReadOnlyCollection<ThemeOptionViewModel>(CreateThemeOptions());
         Load();
         SettingsHost.SettingChanged += OnSettingChanged;
         ShortcutCatalog.ShortcutChanged += OnShortcutChanged;
@@ -57,6 +69,18 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         GlobalShortcutPreferences = new ReadOnlyCollection<ShortcutPreferenceViewModel>(globalShortcuts);
     }
 
+    public ThemeOptionViewModel? SelectedThemeOption
+    {
+        get => _selectedThemeOption;
+        set
+        {
+            if (SetProperty(ref _selectedThemeOption, value) && !_suppressStoreUpdates && value is not null)
+            {
+                SettingsHost.Set(SettingsRegistry.AppThemeMode, value.Mode);
+            }
+        }
+    }
+
     public bool EnableFloatingResults
     {
         get => _enableFloatingResults;
@@ -66,6 +90,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
             {
                 SettingsHost.Set(SettingsRegistry.EnableFloatingResults, value);
             }
+            BeginHudPlacementCommand.RaiseCanExecuteChanged();
+            ClearHudPlacementCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -201,6 +227,23 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         }
     }
 
+    public bool FloatingHudPinned
+    {
+        get => _floatingHudPinned;
+        private set
+        {
+            if (SetProperty(ref _floatingHudPinned, value))
+            {
+                OnPropertyChanged(nameof(FloatingHudPlacementStatus));
+                ClearHudPlacementCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string FloatingHudPlacementStatus => FloatingHudPinned
+        ? ClopStringCatalog.Get("settings.floatingHud.pinStatusPinned")
+        : ClopStringCatalog.Get("settings.floatingHud.pinStatusUnpinned");
+
     private void Load()
     {
         _suppressStoreUpdates = true;
@@ -208,6 +251,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         EnableFloatingResults = SettingsHost.Get(SettingsRegistry.EnableFloatingResults);
         AutoHideFloatingResults = SettingsHost.Get(SettingsRegistry.AutoHideFloatingResults);
         AutoHideFloatingResultsAfter = SettingsHost.Get(SettingsRegistry.AutoHideFloatingResultsAfter);
+        FloatingHudPinned = SettingsHost.Get(SettingsRegistry.FloatingHudPinned);
         EnableClipboardOptimiser = SettingsHost.Get(SettingsRegistry.EnableClipboardOptimiser);
         AutoCopyToClipboard = SettingsHost.Get(SettingsRegistry.AutoCopyToClipboard);
         OptimiseVideoClipboard = SettingsHost.Get(SettingsRegistry.OptimiseVideoClipboard);
@@ -217,6 +261,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         EnableAutomaticImageOptimisations = SettingsHost.Get(SettingsRegistry.EnableAutomaticImageOptimisations);
         EnableAutomaticVideoOptimisations = SettingsHost.Get(SettingsRegistry.EnableAutomaticVideoOptimisations);
         EnableAutomaticPdfOptimisations = SettingsHost.Get(SettingsRegistry.EnableAutomaticPdfOptimisations);
+        var themeMode = SettingsHost.Get(SettingsRegistry.AppThemeMode);
+        SelectedThemeOption = ThemeOptions.FirstOrDefault(option => option.Mode == themeMode) ?? ThemeOptions.FirstOrDefault();
 
         _suppressStoreUpdates = false;
     }
@@ -234,6 +280,9 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
                 break;
             case var name when name == SettingsRegistry.AutoHideFloatingResultsAfter.Name:
                 AutoHideFloatingResultsAfter = SettingsHost.Get(SettingsRegistry.AutoHideFloatingResultsAfter);
+                break;
+            case var name when name == SettingsRegistry.FloatingHudPinned.Name:
+                FloatingHudPinned = SettingsHost.Get(SettingsRegistry.FloatingHudPinned);
                 break;
             case var name when name == SettingsRegistry.EnableClipboardOptimiser.Name:
                 EnableClipboardOptimiser = SettingsHost.Get(SettingsRegistry.EnableClipboardOptimiser);
@@ -262,6 +311,10 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
             case var name when name == SettingsRegistry.EnableAutomaticPdfOptimisations.Name:
                 EnableAutomaticPdfOptimisations = SettingsHost.Get(SettingsRegistry.EnableAutomaticPdfOptimisations);
                 break;
+            case var name when name == SettingsRegistry.AppThemeMode.Name:
+                var themeMode = SettingsHost.Get(SettingsRegistry.AppThemeMode);
+                SelectedThemeOption = ThemeOptions.FirstOrDefault(option => option.Mode == themeMode) ?? SelectedThemeOption;
+                break;
         }
         _suppressStoreUpdates = false;
     }
@@ -272,11 +325,32 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         ShortcutCatalog.ShortcutChanged -= OnShortcutChanged;
     }
 
+    private void BeginHudPlacement()
+    {
+        _hudController.BeginPlacementMode();
+    }
+
+    private void ClearHudPlacement()
+    {
+        _hudController.ClearPinnedPlacement();
+    }
+
     private void OnShortcutChanged(object? sender, ShortcutChangedEventArgs e)
     {
         if (_shortcutLookup.TryGetValue(e.Id, out var viewModel))
         {
             viewModel.Refresh();
         }
+    }
+
+    private static List<ThemeOptionViewModel> CreateThemeOptions()
+    {
+        return new List<ThemeOptionViewModel>
+        {
+            new(AppThemeMode.FollowSystem, ClopStringCatalog.Get("settings.theme.followSystem")),
+            new(AppThemeMode.Light, ClopStringCatalog.Get("settings.theme.light")),
+            new(AppThemeMode.Dark, ClopStringCatalog.Get("settings.theme.dark")),
+            new(AppThemeMode.HighSaturation, ClopStringCatalog.Get("settings.theme.highSaturation"))
+        };
     }
 }

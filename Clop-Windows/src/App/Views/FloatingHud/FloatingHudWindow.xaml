@@ -11,10 +11,12 @@
         ShowInTaskbar="False"
         ShowActivated="False"
         Topmost="True"
-        Width="360"
         MinHeight="100"
         Focusable="False"
         SnapsToDevicePixels="True"
+        SizeToContent="Height"
+        MinWidth="280"
+        Width="{Binding PreferredWidth}"
         Loaded="OnLoaded"
         SizeChanged="OnSizeChanged"
         AutomationProperties.Name="{loc:Loc hud.title}">
@@ -59,9 +61,11 @@
     <Border Background="{DynamicResource Brush.HudBackground}"
             CornerRadius="14"
             Padding="16"
-            Effect="{StaticResource HudShadow}">
+            Effect="{StaticResource HudShadow}"
+            MouseLeftButtonDown="OnHudMouseDown">
 
         <Grid>
+            <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -80,7 +84,12 @@
                     Background="{DynamicResource Brush.HudCardBorder}"
                     Padding="0"
                     Visibility="{Binding HasResults, Converter={StaticResource BooleanToVisibilityConverter}}">
-                <ScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" MaxHeight="420" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="{loc:Loc hud.automation.name}" AutomationProperties.HelpText="{loc:Loc hud.automation.help}">
+                <ScrollViewer VerticalScrollBarVisibility="Hidden"
+                              HorizontalScrollBarVisibility="Disabled"
+                              MaxHeight="{Binding MaxResultsHeight}"
+                              AutomationProperties.LiveSetting="Polite"
+                              AutomationProperties.Name="{loc:Loc hud.automation.name}"
+                              AutomationProperties.HelpText="{loc:Loc hud.automation.help}">
                     <ItemsControl ItemsSource="{Binding Results}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -210,6 +219,32 @@
                 <StackPanel>
                     <TextBlock Text="{loc:Loc hud.empty.title}" Foreground="{DynamicResource Brush.HudTextPrimary}" FontWeight="SemiBold" />
                     <TextBlock Text="{loc:Loc hud.empty.description}" Foreground="{DynamicResource Brush.HudTextSecondary}" TextWrapping="Wrap" Margin="0,4,0,0" FontSize="12" />
+                </StackPanel>
+            </Border>
+            </Grid>
+
+            <Border Background="#BF050505"
+                    CornerRadius="14"
+                    Padding="20"
+                    Visibility="{Binding IsPlacementMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="{loc:Loc hud.placement.title}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Brush.HudTextPrimary}"/>
+                    <TextBlock Text="{loc:Loc hud.placement.instructions}" Margin="0,4,0,16" Foreground="{DynamicResource Brush.HudTextSecondary}" TextWrapping="Wrap"/>
+                    <Border Background="{DynamicResource Brush.HudCardBackground}" CornerRadius="10" Padding="12">
+                        <StackPanel>
+                            <TextBlock Text="{loc:Loc hud.placement.previewTitle}" FontWeight="SemiBold" Foreground="{DynamicResource Brush.HudTextPrimary}"/>
+                            <TextBlock Text="{loc:Loc hud.placement.previewSubtitle}" Foreground="{DynamicResource Brush.HudTextSecondary}" FontSize="12" Margin="0,4,0,0"/>
+                            <ProgressBar Height="4"
+                                         Margin="0,12,0,0"
+                                         Value="40"
+                                         Maximum="100"
+                                         Foreground="{DynamicResource Brush.HudProgress}"/>
+                        </StackPanel>
+                    </Border>
+                    <StackPanel Orientation="Horizontal" Margin="0,16,0,0" HorizontalAlignment="Right">
+                        <Button Content="{loc:Loc hud.placement.cancel}" Margin="0,0,8,0" Padding="16,6" Click="OnPlacementCancelClicked"/>
+                        <Button Content="{loc:Loc hud.placement.pin}" Padding="18,6" Click="OnPlacementConfirmClicked"/>
+                    </StackPanel>
                 </StackPanel>
             </Border>
         </Grid>

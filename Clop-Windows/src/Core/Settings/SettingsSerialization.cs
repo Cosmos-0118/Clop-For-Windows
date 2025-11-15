@@ -9,6 +9,7 @@ internal static class SettingsSerialization
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals,
         Converters =
         {
             new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)
